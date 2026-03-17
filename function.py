@@ -1,3 +1,20 @@
+import random
+import string
+import smtplib
+from email.mime.text import MIMEText
+import threading
+from flask import request, jsonify
+
+def gerar_codigo(tamanho=6):
+    return ''.join(random.choice(string.digits, k=tamanho))
+
+
+
+
+
+
+
+
 def verificar_senha(senha):
 
     if len(senha) < 10:
@@ -28,7 +45,8 @@ def verificar_senha(senha):
     
 def enviando_email(destinatario, assunto, mensagem):
     user = 'estoquecars@gmail.com'
-    senha = ''
+    senha = 'sozzflywdrfxxntv'
+
     
     msg = MIMEText(mensagem)
     msg['Subject'] = assunto
