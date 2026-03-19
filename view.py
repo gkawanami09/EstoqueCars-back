@@ -39,9 +39,9 @@ def criar_usuario():
         erro_senha = verificar_senha(senha)
 
         if not nome or not nome:
-            return jsonify({'erro':'Esse campo e obrigatório.'}),400
+            return jsonify({'erro':'Esse campo e obrigatrio.'}),400
         if not email or not senha:
-            return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
+            return jsonify({'erro': 'Email e senha são obrigatrios.'}), 400
 
         if erro_senha:
             return jsonify({'erro': erro_senha}), 400
@@ -63,7 +63,7 @@ def criar_usuario():
 
         con.commit()
 
-        return jsonify({'mensagem': 'Usuário criado com sucesso!'}), 201
+        return jsonify({'mensagem': 'Usurio criado com sucesso!'}), 201
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
@@ -145,8 +145,7 @@ def login():
             return jsonify({'erro': 'Email ou senha incorreto'}), 400
 
         cur = con.cursor()
-        #if id_user:
-         #   if check_password_hash(id_user[1],senha):
+       
 
         cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH FROM USUARIO WHERE EMAIL = ?""", (email,))
         usuario = cur.fetchone()
