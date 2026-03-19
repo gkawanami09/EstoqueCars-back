@@ -3,6 +3,7 @@ import fdb
 from flask_cors import CORS
 
 app = Flask(__name__)
+
 app.config.from_pyfile('config.py')
 
 host = app.config['DB_HOST']

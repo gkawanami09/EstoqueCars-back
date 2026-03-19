@@ -1,19 +1,18 @@
 import random
 import string
 import smtplib
+import ssl
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import threading
 from flask import request, jsonify
+import threading, smtplib
+import jwt, datetime
+from main import app
+
 
 def gerar_codigo(tamanho=6):
-    return ''.join(random.choice(string.digits, k=tamanho))
-
-
-
-
-
-
-
+    return ''.join(random.choices(string.digits, k=tamanho))
 
 def verificar_senha(senha):
 
@@ -42,19 +41,35 @@ def verificar_senha(senha):
     if not tem_simbolo:   return "Falta um símbolo especial"
 
     return None
-    
-def enviando_email(destinatario, assunto, mensagem):
+
+
+
+def enviando_email(destinatario, assunto, mensagem_html):
     user = 'estoquecars@gmail.com'
     senha = 'sozzflywdrfxxntv'
 
-    
-    msg = MIMEText(mensagem)
+
+    msg = MIMEMultipart()
     msg['Subject'] = assunto
     msg['From'] = user
     msg['To'] = destinatario
-    
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.starttls()
-    server.login(user, senha)
-    server.send_message(msg)
-    server.quit()
+
+
+    msg.attach(MIMEText(mensagem_html, 'html', 'utf-8'))
+    try:
+        contexto = ssl.create_default_context()
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=contexto) as server:
+            server.set_debuglevel(1)
+            server.login(user, senha)
+            server.sendmail(user, destinatario, msg.as_string())
+
+        print(f"E-mail enviado com sucesso para {destinatario}")
+
+    except Exception as e:
+        print(f"Erro ao enviar e-mail para {destinatario}: {e}")
+
+
+
+
+
