@@ -8,22 +8,14 @@ import jwt
 from function import verificar_senha, enviando_email, gerar_codigo
 from main import app, con
 
-
-# =======================================================
-# TODO SPRINT - TAREFAS PENDENTES - PARA GUILHERME MARI
-# =======================================================
 # [ ] 1. AUTH/JWT: Adicionar token no /login, expirar em 10min e criar /logout.
 # [ ] 2. SEGURANÇA: Bloquear login após 3 erros e criar /desbloquear (admin).
 # [ ] 3. EMAIL: Exigir confirmação de e-mail p/ login (enviar no cadastro).
 # [ ] 4. SENHAS: Proibir repetição das últimas 3 senhas (editar/recuperar).
-# [ ] 5. CRUD: Adicionar a rota /excluir_usuario/<id> que ficou faltando.
-# =======================================================
-
 
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
-
 
 @app.route('/criar_usuario', methods=['POST'])
 def criar_usuario():
@@ -39,9 +31,9 @@ def criar_usuario():
         erro_senha = verificar_senha(senha)
 
         if not nome or not nome:
-            return jsonify({'erro':'Esse campo e obrigatrio.'}),400
+            return jsonify({'erro':'Esse campo e obrigatório.'}),400
         if not email or not senha:
-            return jsonify({'erro': 'Email e senha são obrigatrios.'}), 400
+            return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
 
         if erro_senha:
             return jsonify({'erro': erro_senha}), 400
@@ -63,7 +55,7 @@ def criar_usuario():
 
         con.commit()
 
-        return jsonify({'mensagem': 'Usurio criado com sucesso!'}), 201
+        return jsonify({'mensagem': 'Usuário criado com sucesso!'}), 201
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
@@ -145,7 +137,8 @@ def login():
             return jsonify({'erro': 'Email ou senha incorreto'}), 400
 
         cur = con.cursor()
-       
+        #if id_user:
+         #   if check_password_hash(id_user[1],senha):
 
         cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH FROM USUARIO WHERE EMAIL = ?""", (email,))
         usuario = cur.fetchone()
@@ -296,9 +289,7 @@ def recuperar_senha():
         erro_senha = verificar_senha(nova_senha)
         if erro_senha:
             return jsonify({'erro_senha': erro_senha}), 400
-
         cur = con.cursor()
-
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
         usuario = cur.fetchone()
 
@@ -393,5 +384,27 @@ def buscar_usuario(id_usuario):
         if cur:
             cur.close()
 
+@app.route('/excluir_usuario/<int:id_usuario>', methods=['DELETE'])
+def excluir_usuario(id_usuario):
+    try:
+        cur = con.cursor()
 
+        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO= ?",(id_usuario,))
+        if not  cur.fetchone():
+            return jsonify({'erro': 'usuario nao encontrado'}), 404
 
+        cur.execute("DELETE FROM USUARIO WHERE ID_USUARIO = ?",(id_usuario,))
+        con.commit()
+
+        #nome_imagem = f'perfil{id_usuario}.jpg'
+        #caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+       # if not os.path.exists(caminho_foto):
+        #    os.remove(caminho_foto)
+
+        return jsonify({'messagem': 'Usuário removido com sucesso'}), 200
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao excluir usuario: {e}'}), 500
+    finally:
+        if cur:
+            cur.close()
