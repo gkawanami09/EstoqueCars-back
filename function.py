@@ -23,7 +23,7 @@ def verificar_senha(senha):
     tem_minuscula = False
     tem_numero = False
     tem_simbolo = False
-    simbolos = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+    simbolos = "!@#$%^&*()_+-=[]}{|;:,.<>?"
 
     for letra in senha:
         if letra.isupper():

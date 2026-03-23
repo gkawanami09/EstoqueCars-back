@@ -1,5 +1,4 @@
-import cur
-from flask import Flask, jsonify, request, Response, make_response
+﻿from flask import Flask, jsonify, request, Response, make_response
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import datetime
@@ -9,9 +8,9 @@ from function import verificar_senha, enviando_email, gerar_codigo
 from main import app, con
 
 # [ ] 1. AUTH/JWT: Adicionar token no /login, expirar em 10min e criar /logout.
-# [ ] 2. SEGURANÇA: Bloquear login após 3 erros e criar /desbloquear (admin).
-# [ ] 3. EMAIL: Exigir confirmação de e-mail p/ login (enviar no cadastro).
-# [ ] 4. SENHAS: Proibir repetição das últimas 3 senhas (editar/recuperar).
+# [ ] 2. SEGURANÇA: Bloquear login apos 3 erros e criar /desbloquear (admin).
+# [ ] 3. EMAIL: Exigir confirmacao de e-mail p/ login (enviar no cadastro).
+# [ ] 4. SENHAS: Proibir repeticao das ultimas 3 senhas (editar/recuperar).
 
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -116,7 +115,7 @@ def editar_usuario(id_usuario):
 
         con.commit()
 
-        return jsonify({'mensagem': 'Usuario editado com sucesssssssssso!'}), 200
+        return jsonify({'mensagem': 'Usuario editado com sucesso!'}), 200
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao editar: {e}'}), 500
@@ -134,34 +133,62 @@ def login():
         senha = dados.get('senha')
 
         if not email or not senha:
-            return jsonify({'erro': 'Email ou senha incorreto'}), 400
+            return jsonify({'erro': 'Preencha todos os campos'}), 400
 
         cur = con.cursor()
         #if id_user:
          #   if check_password_hash(id_user[1],senha):
 
-        cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH FROM USUARIO WHERE EMAIL = ?""", (email,))
+        cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO FROM USUARIO WHERE EMAIL = ?""", (email,))
         usuario = cur.fetchone()
 
         if not usuario:
-            return jsonify({'erro': 'Email ou senha incorreto'}), 400
+            return jsonify({'erro': 'Email não cadastrado'}), 400
 
         id_usuario = usuario[0]
         nome = usuario[1]
         senha_hash = usuario[2]
+        situacao = usuario[3]
+        erro = usuario[4]
+
+        if situacao == 1:
+            return jsonify({'erro': 'Usuario bloqueado'}), 401
 
         if check_password_hash(senha_hash, senha):
+            cur.execute(
+                "UPDATE USUARIO SET ERRO = 0 WHERE ID_USUARIO = ?",
+                (id_usuario,)
+            )
+            con.commit()
             return jsonify({'messagem': 'Login realizado com sucesso','usuario':{
                 'id': id_usuario,
                 'nome': nome,
             }}),200
         else:
+            cur.execute(
+                "UPDATE USUARIO SET ERRO = ERRO + 1 WHERE ID_USUARIO = ?",
+                (id_usuario,)
+            )
+            con.commit()
+
+            cur.execute(
+                "SELECT ERRO FROM USUARIO WHERE ID_USUARIO = ?",
+                (id_usuario,)
+            )
+            erro_atual = cur.fetchone()[0]
+            if erro_atual >= 3:
+                cur.execute(
+                    "UPDATE USUARIO SET SITUACAO = 1 WHERE ID_USUARIO = ?",
+                    (id_usuario,)
+                )
+                con.commit()
+                return jsonify({'erro': 'Usuario bloqueado'}), 401
+
             return jsonify({'erro': 'Email ou Senha esta incorreta'}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao login: {e}'}), 500
     finally:
-        if 'cur' in locals():
-            cur.close()
+        cur.close()
 
 
 @app.route('/enviar_email', methods=['POST'])
@@ -206,7 +233,7 @@ def enviar_email():
     thread = threading.Thread(target=enviando_email, args=(destinatario, assunto, template_html))
     thread.start()
 
-    return jsonify({'mensagem': 'E-mail adicionado à fila de envio com sucesso!'}), 200
+    return jsonify({'mensagem': 'E-mail adicionado na fila de envio com sucesso!'}), 200
 
 
 @app.route('/codigo_vereficacao', methods=['POST'])
@@ -272,8 +299,7 @@ def codigo_vereficacao():
     except Exception as e:
         return jsonify({'erro': f'Erro ao solicitar recuperação: {str(e)}'}), 500
     finally:
-        if 'cur' in locals():
-            cur.close()
+        cur.close()
 
 @app.route('/recuperar_senha', methods=['POST'])
 def recuperar_senha():
@@ -333,8 +359,7 @@ def recuperar_senha():
         return jsonify({'erro': f'Erro ao redefinir senha: {e}'}), 500
 
     finally:
-        if 'cur' in locals():
-            cur.close()
+        cur.close()
 
 @app.route('/listar_usuarios', methods=['GET'])
 def listar_usuarios():
@@ -356,8 +381,7 @@ def listar_usuarios():
     except Exception as e:
         return jsonify({'erro': f'Erro ao listar usuarios: {e}'}), 500
     finally:
-        if cur:
-            cur.close()
+        cur.close()
 
 @app.route('/buscar_usuario/<int:id_usuario>', methods=['GET'])
 def buscar_usuario(id_usuario):
@@ -381,8 +405,7 @@ def buscar_usuario(id_usuario):
     except Exception as e:
         return jsonify({'erro': f'Erro ao buscar usuario: {e}'}), 500
     finally:
-        if cur:
-            cur.close()
+        cur.close()
 
 @app.route('/excluir_usuario/<int:id_usuario>', methods=['DELETE'])
 def excluir_usuario(id_usuario):
@@ -406,5 +429,5 @@ def excluir_usuario(id_usuario):
     except Exception as e:
         return jsonify({'erro': f'Erro ao excluir usuario: {e}'}), 500
     finally:
-        if cur:
-            cur.close()
+        cur.close()
+
