@@ -1,5 +1,5 @@
 ﻿from tempfile import template
-from flask import Flask, jsonify, request, Response, make_response
+from flask import Flask, jsonify, request, Response, make_response,render_template
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import datetime
@@ -20,7 +20,7 @@ def criar_usuario():
         email = request.form.get('email')
         senha = request.form.get('senha')
         cpf = request.form.get('cpf')
-        foto_prefil = request.files.get('foto_prefil')
+        foto_perfil = request.files.get('foto_perfil')
 
         erro_senha = verificar_senha(senha)
 
@@ -32,10 +32,10 @@ def criar_usuario():
         if erro_senha:
             return jsonify({'erro': erro_senha}), 400
 
-        if foto_prefil:
+        if foto_perfil:
             nome_imagem = f'{email}.jpg'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
-            foto_prefil.save(caminho_foto)
+            foto_perfil.save(caminho_foto)
 
         senha_hash = generate_password_hash(senha)
         codigo_ativacao = gerar_codigo()
@@ -51,22 +51,13 @@ def criar_usuario():
         con.commit()
 
         assunto = "Confirme seu cadastro - Estoque Cars"
-        template_html = f"""
-            <html>
-                <body style="font-family: Arial, sans-serif; background-color: black; padding: 20px; margin: 0;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px;">
-              <h2 style="color: #EF4444; text-align: center;">Olá, {nome}!</h2>
-              <p style="font-size: 16px; color: #555555; text-align: center;">
-                Falta pouco! Seu código de ativação é: <b>{codigo_ativacao}</b>
-              </p>
-            </div>
-             </body> 
-        </html>
-        """
+
+        template_html = render_template('email_cadastro.html', nome=nome, codigo=codigo_ativacao)
+
         thread = threading.Thread(target=enviando_email, args=(email, assunto, template_html))
         thread.start()
 
-        return jsonify({'mensagem': 'Usuário criado com sucesso!'}), 201
+        return jsonify({'mensagem': 'Usuário criado com sucesso! Para ativar, verifique o seu e-mail.'}), 201
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
@@ -110,7 +101,7 @@ def editar_usuario(id_usuario):
         email = request.form.get('email')
         senha = request.form.get('senha')
         cpf = request.form.get('cpf')
-        foto_prefil = request.files.get('foto_prefil')
+        foto_perfil = request.files.get('foto_perfil')
 
         cur = con.cursor()
 
@@ -164,10 +155,10 @@ def editar_usuario(id_usuario):
                         WHERE ID_USUARIO = ?
                         """, (nome, telefone, email, cpf, id_usuario))
 
-        if foto_prefil:
+        if foto_perfil:
             nome_imagem = f'perfil_{id_usuario}.jpg'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
-            foto_prefil.save(caminho_foto)
+            foto_perfil.save(caminho_foto)
 
         con.commit()
         return jsonify({'mensagem': 'Usuario editado com sucesso!'}), 200
@@ -231,7 +222,7 @@ def login():
             return resp
         else:
             if tipo == 2:
-                return jsonify({'erro': 'Email ou Senha esta incorreta'}), 401
+                return jsonify({'erro': 'Email ou Senha está incorreta'}), 401
             cur.execute(
                 "UPDATE USUARIO SET ERRO = ERRO + 1 WHERE ID_USUARIO = ?",
                 (id_usuario,)
@@ -251,7 +242,7 @@ def login():
                 con.commit()
                 return jsonify({'erro': 'Usuario bloqueado'}), 401
 
-            return jsonify({'erro': 'Email ou Senha esta incorreta'}), 401
+            return jsonify({'erro': 'Email ou Senha está incorreta'}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao login: {e}'}), 500
     finally:
@@ -268,25 +259,7 @@ def enviar_email():
     if not assunto or not destinatario or not mensagem_texto:
         return jsonify({'erro': 'Os campos assunto, mensagem e destinatario são obrigatórios.'}), 400
 
-    template_html = f"""
-    <html>
-      <body style="font-family: Arial, sans-serif; background-color: black; padding: 20px; margin: 0;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-          <h2 style="color: #EF4444; text-align: center;">Estoque Cars</h2>
-          <p style="font-size: 16px; color: #555555; line-height: 1.5;">
-            {mensagem_texto}
-          </p>
-          <div style="text-align: center; margin-top: 20px;">
-              <img src="https://ibb.co/67RxpWTw" alt="Logo do site Estoque cars" style="max-width: 100%; border-radius: 8px;">
-          </div>
-          <hr style="border: none; border-top: 1px solid #eeeeee; margin: 30px 0;">
-          <p style="font-size: 12px; color: #999999; text-align: center;">
-            Atenciosamente,<br>Equipe Estoque Cars<br>
-          </p>
-        </div>
-      </body>
-    </html>
-    """
+    template_html = render_template('email_generico.html', mensagem_texto=mensagem_texto)
 
     thread = threading.Thread(target=enviando_email, args=(destinatario, assunto, template_html))
     thread.start()
@@ -294,8 +267,8 @@ def enviar_email():
     return jsonify({'mensagem': 'E-mail adicionado na fila de envio com sucesso!'}), 200
 
 
-@app.route('/codigo_vereficacao', methods=['POST'])
-def codigo_vereficacao():
+@app.route('/codigo_verificacao', methods=['POST'])
+def codigo_verificacao():
     try:
         dados = request.get_json()
         email = dados.get('email')
@@ -318,26 +291,9 @@ def codigo_vereficacao():
         cur.execute("INSERT INTO RECUPERAR_SENHA (ID_USUARIO, CODIGO) VALUES (?, ?)", (id_usuario, codigo))
         con.commit()
 
-        template_html = f"""
-            <html>
-              <body style="font-family: Arial, sans-serif; background-color: black; padding: 20px; margin: 0;">
-                <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-                  <h2 style="color: #EF4444; text-align: center;">Estoque Cars</h2>
-                  <p style="font-size: 16px; color: #555555; line-height: 1.5;">
-                    Olá {nome}, seu códgio de repuração é {codigo}<br>
-                  </p>
-                  <div style="text-align: center; margin-top: 20px;">
-                      <img src="https://ibb.co/67RxpWTw" alt="Logo da empresa " style="max-width: 100%; border-radius: 8px;">
-                  </div>
-                  <hr style="border: none; border-top: 1px solid #eeeeee; margin: 30px 0;">
-                  <p style="font-size: 12px; color: #999999; text-align: center;">
-                    Atenciosamente,<br>Equipe Estoque Cars<br>
-                  </p>
-                </div>
-              </body>
-            </html>
-            """
+
         assunto = "Recuperação de Senha - Estoque Cars"
+        template_html = render_template('email_recuperacao.html', nome=nome, codigo=codigo)
 
         thread = threading.Thread(target=enviando_email, args=(email, assunto, template_html))
         thread.start()
@@ -374,7 +330,7 @@ def recuperar_senha():
 
         id_usuario = usuario[0]
 
-        # 1. Verifica se está reutilizando as 3 últimas senhas
+
         if verificar_senha_repetida(id_usuario, nova_senha, cur):
             return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
 
@@ -404,7 +360,7 @@ def recuperar_senha():
             cur.execute("INSERT INTO SENHA (ID_USUARIO, SENHA_NOVA) VALUES (?, ?)",
                         (id_usuario, senha_atual_banco))
 
-        # 3. Atualiza a senha nova no USUARIO
+
         senha_hash = generate_password_hash(nova_senha)
 
         cur.execute(
@@ -459,7 +415,7 @@ def buscar_usuario(id_usuario):
         usuario = cur.fetchone()
 
         if not usuario:
-            return jsonify({'erro': 'usuario não encontrado'}), 404
+            return jsonify({'erro': 'Usuário não encontrado'}), 404
 
         dados_usuarios = {
             'id_usuario': usuario[0],
@@ -471,7 +427,7 @@ def buscar_usuario(id_usuario):
 
         return jsonify(dados_usuarios), 200
     except Exception as e:
-        return jsonify({'erro': f'Erro ao buscar usuario: {e}'}), 500
+        return jsonify({'erro': f'Erro ao buscar usuário: {e}'}), 500
     finally:
         cur.close()
 
@@ -483,8 +439,10 @@ def excluir_usuario(id_usuario):
 
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_usuario,))
         if not cur.fetchone():
-            return jsonify({'erro': 'usuario não encontrado'}), 404
+            return jsonify({'erro': 'Usuário não encontrado'}), 404
 
+        cur.execute("DELETE FROM RECUPERAR_SENHA WHERE ID_USUARIO = ?", (id_usuario,))
+        cur.execute("DELETE FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
         cur.execute("DELETE FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         con.commit()
 
@@ -493,10 +451,10 @@ def excluir_usuario(id_usuario):
         if os.path.exists(caminho_foto):
             os.remove(caminho_foto)
 
-        return jsonify({'messagem': 'Usuário removido com sucesso'}), 200
+        return jsonify({'mensagem': 'Usuário removido com sucesso'}), 200
 
     except Exception as e:
-        return jsonify({'erro': f'Erro ao excluir usuario: {e}'}), 500
+        return jsonify({'erro': f'Erro ao excluir usuário: {e}'}), 500
     finally:
         cur.close()
 
