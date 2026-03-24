@@ -3,7 +3,7 @@ SECRET_KEY = "senha_muito_secreta"
 DEBUG = True
 
 DB_HOST = 'localhost'
-DB_NAME = r'C:\Users\Guilherme kawanami\OneDrive\Documentos\GitHub\EstoqueCars-back\EstoqueCarsBanco.FDB'
+DB_NAME = r'C:\Users\Aluno\Documents\GitHub\EstoqueCars-back\EstoqueCarsBanco.FDB'
 
 DB_USER = 'sysdba'
 DB_PASSWORD = 'sysdba'

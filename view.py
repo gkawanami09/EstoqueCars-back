@@ -1,4 +1,6 @@
-﻿from flask import Flask, jsonify, request, Response, make_response
+﻿from tempfile import template
+
+from flask import Flask, jsonify, request, Response, make_response
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import datetime
@@ -7,10 +9,7 @@ import jwt
 from function import verificar_senha, enviando_email, gerar_codigo, gerar_token
 from main import app, con
 
-# [ ] 1. AUTH/JWT: Adicionar token no /login, expirar em 10min e criar /logout.
-# [ ] 2. SEGURANÇA: Bloquear login apos 3 erros e criar /desbloquear (admin).
-# [ ] 3. EMAIL: Exigir confirmacao de e-mail p/ login (enviar no cadastro).
-# [ ] 4. SENHAS: Proibir repeticao das ultimas 3 senhas (editar/recuperar).
+
 
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -44,21 +43,73 @@ def criar_usuario():
             foto_prefil.save(caminho_foto)
 
         senha_hash = generate_password_hash(senha)
+
+        codigo_ativacao = gerar_codigo()
+
         
         cur.execute("""SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ? """, (email,))
         if cur.fetchone():
             return jsonify({'erro': 'Email já cadastrado.'}), 409
 
-        cur.execute("""INSERT INTO USUARIO (NOME, EMAIL, TELEFONE, SENHA_HASH, CPF) VALUES (?, ?, ?, ?, ?)""",
-                    (nome, email, telefone, senha_hash, cpf))
+        cur.execute("""INSERT INTO USUARIO (NOME, EMAIL, TELEFONE, SENHA_HASH, CPF, SITUACAO, CODIGO_ATIVACAO) 
+                               VALUES (?, ?, ?, ?, ?, 3, ?)""",
+                    (nome, email, telefone, senha_hash, cpf, codigo_ativacao))
 
         con.commit()
+
+
+        assunto = "Confirme seu cadastro - Estoque Cars"
+        template_html = f"""
+            <html>
+                <body style="font-family: Arial, sans-serif; background-color: black; padding: 20px; margin: 0;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px;">
+              <h2 style="color: #EF4444; text-align: center;">Olá, {nome}!</h2>
+              <p style="font-size: 16px; color: #555555; text-align: center;">
+                Falta pouco! Seu código de ativação é: <b>{codigo_ativacao}</b>
+              </p>
+            </div>
+             </body> 
+        </html>
+
+        """
+        thread = threading.Thread(target=enviando_email, args=(email, assunto, template_html))
+        thread.start()
+
 
         return jsonify({'mensagem': 'Usuário criado com sucesso!'}), 201
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
 
+    finally:
+        cur.close()
+
+
+@app.route('/confirmar_email', methods=['POST'])
+def confirmar_email():
+    cur = con.cursor()
+    try:
+        dados = request.get_json()
+        email = dados.get('email')
+        codigo = dados.get('codigo')
+
+        if not email or not codigo:
+            return jsonify({'erro': 'E-mail e código são obrigatórios.'}), 400
+
+
+        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ? AND CODIGO_ATIVACAO = ?", (email, codigo))
+
+        if not cur.fetchone():
+            return jsonify({'erro': 'Código inválido ou e-mail incorreto.'}), 400
+
+
+        cur.execute("UPDATE USUARIO SET SITUACAO = 0, CODIGO_ATIVACAO = NULL WHERE EMAIL = ?", (email,))
+        con.commit()
+
+        return jsonify({'mensagem': 'E-mail confirmado com sucesso! Você já pode fazer login.'}), 200
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao confirmar e-mail: {e}'}), 500
     finally:
         cur.close()
 
@@ -135,8 +186,6 @@ def login():
         if not email or not senha:
             return jsonify({'erro': 'Preencha todos os campos'}), 400
 
-        #if id_user:
-         #   if check_password_hash(id_user[1],senha):
 
         cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO, TIPO_USUARIO FROM USUARIO WHERE EMAIL = ?""", (email,))
         usuario = cur.fetchone()
@@ -226,7 +275,7 @@ def enviar_email():
           </p>
 
           <div style="text-align: center; margin-top: 20px;">
-              <img src="" alt="Logo do site Estoque cars" style="max-width: 100%; border-radius: 8px;">
+              <img src="https://ibb.co/67RxpWTw" alt="Logo do site Estoque cars" style="max-width: 100%; border-radius: 8px;">
           </div>
 
           <hr style="border: none; border-top: 1px solid #eeeeee; margin: 30px 0;">
@@ -286,7 +335,7 @@ def codigo_vereficacao():
                   </p>
 
                   <div style="text-align: center; margin-top: 20px;">
-                      <img src="" alt="Logo da empresa " style="max-width: 100%; border-radius: 8px;">
+                      <img src="https://ibb.co/67RxpWTw" alt="Logo da empresa " style="max-width: 100%; border-radius: 8px;">
                   </div>
 
                   <hr style="border: none; border-top: 1px solid #eeeeee; margin: 30px 0;">
@@ -429,10 +478,10 @@ def excluir_usuario(id_usuario):
         cur.execute("DELETE FROM USUARIO WHERE ID_USUARIO = ?",(id_usuario,))
         con.commit()
 
-        #nome_imagem = f'perfil{id_usuario}.jpg'
-        #caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
-       # if not os.path.exists(caminho_foto):
-        #    os.remove(caminho_foto)
+        nome_imagem = f'perfil{id_usuario}.jpg'
+        caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+        if os.path.exists(caminho_foto):
+            os.remove(caminho_foto)
 
         return jsonify({'messagem': 'Usuário removido com sucesso'}), 200
 
