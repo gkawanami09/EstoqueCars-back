@@ -391,7 +391,6 @@ def listar_usuario():
         return jsonify({"mensagem" : "token de autenticação necessária"}), 401
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-        id_usuario = payload['id_usuario']
     except jwt.ExpiredSignatureError:
         return jsonify({"mensagem" : "token expirado"}),401
     except jwt.InvalidTokenError:
