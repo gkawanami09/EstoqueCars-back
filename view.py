@@ -199,7 +199,7 @@ def login():
         if situacao == 1 and tipo != 2:
             return jsonify({'erro': 'Usuario bloqueado'}), 401
 
-        if situacao == 3:
+        if situacao == 2:
             return jsonify({'erro': 'Por favor, confirme seu e-mail antes de fazer login.'}), 403
 
         if check_password_hash(senha_hash, senha):
@@ -384,8 +384,8 @@ def recuperar_senha():
         cur.close()
 
 
-@app.route('/listar_usuarios', methods=['GET'])
-def listar_usuarios():
+@app.route('/listar_usuario', methods=['GET'])
+def listar_usuario():
     try:
         cur = con.cursor()
         cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE FROM USUARIO")
@@ -407,25 +407,29 @@ def listar_usuarios():
         cur.close()
 
 
-@app.route('/buscar_usuario/<int:id_usuario>', methods=['GET'])
-def buscar_usuario(id_usuario):
+@app.route('/buscar_usuario/<string:nome>', methods=['GET'])
+def buscar_usuario(nome):
     try:
         cur = con.cursor()
-        cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
-        usuario = cur.fetchone()
+        cur.execute(
+            "SELECT NOME, EMAIL, CPF, TELEFONE FROM USUARIO WHERE LOWER(NOME) LIKE LOWER(?)",
+            (f"%{nome}%",)
+        )
+        usuario = cur.fetchall()
 
         if not usuario:
             return jsonify({'erro': 'Usuário não encontrado'}), 404
 
-        dados_usuarios = {
-            'id_usuario': usuario[0],
-            'nome': usuario[1],
-            'email': usuario[2],
-            'telefone': usuario[4],
-            'cpf': usuario[3]
-        }
+        dados = []
+        for u in usuario:
+            dados.append({
+                'nome': u[0],
+                'email': u[1],
+                'cpf': u[2],
+                'telefone': u[3]
+            })
 
-        return jsonify(dados_usuarios), 200
+        return jsonify(usuario), 200
     except Exception as e:
         return jsonify({'erro': f'Erro ao buscar usuário: {e}'}), 500
     finally:
