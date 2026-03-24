@@ -4,7 +4,7 @@ import os
 import datetime
 import threading
 import jwt
-from function import verificar_senha, enviando_email, gerar_codigo
+from function import verificar_senha, enviando_email, gerar_codigo, gerar_token
 from main import app, con
 
 # [ ] 1. AUTH/JWT: Adicionar token no /login, expirar em 10min e criar /logout.
@@ -18,6 +18,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 
 @app.route('/criar_usuario', methods=['POST'])
 def criar_usuario():
+    cur = con.cursor()
     try:
 
         nome = request.form.get('nome')
@@ -29,7 +30,7 @@ def criar_usuario():
 
         erro_senha = verificar_senha(senha)
 
-        if not nome or not nome:
+        if not nome:
             return jsonify({'erro':'Esse campo e obrigatório.'}),400
         if not email or not senha:
             return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
@@ -43,8 +44,7 @@ def criar_usuario():
             foto_prefil.save(caminho_foto)
 
         senha_hash = generate_password_hash(senha)
-
-        cur = con.cursor()
+        
         cur.execute("""SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ? """, (email,))
         if cur.fetchone():
             return jsonify({'erro': 'Email já cadastrado.'}), 409
@@ -60,8 +60,7 @@ def criar_usuario():
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
 
     finally:
-        if  cur:
-            cur.close()
+        cur.close()
 
 
 @app.route('/editar_usuario/<int:id_usuario>', methods=['POST'])
@@ -127,6 +126,7 @@ def editar_usuario(id_usuario):
 
 @app.route('/login', methods=['POST'])
 def login():
+    cur = con.cursor()
     try:
         dados = request.get_json()
         email = dados.get('email')
@@ -135,11 +135,10 @@ def login():
         if not email or not senha:
             return jsonify({'erro': 'Preencha todos os campos'}), 400
 
-        cur = con.cursor()
         #if id_user:
          #   if check_password_hash(id_user[1],senha):
 
-        cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO FROM USUARIO WHERE EMAIL = ?""", (email,))
+        cur.execute("""SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO, TIPO_USUARIO FROM USUARIO WHERE EMAIL = ?""", (email,))
         usuario = cur.fetchone()
 
         if not usuario:
@@ -150,8 +149,9 @@ def login():
         senha_hash = usuario[2]
         situacao = usuario[3]
         erro = usuario[4]
+        tipo = usuario[5]
 
-        if situacao == 1:
+        if situacao == 1 and tipo != 2:
             return jsonify({'erro': 'Usuario bloqueado'}), 401
 
         if check_password_hash(senha_hash, senha):
@@ -160,11 +160,21 @@ def login():
                 (id_usuario,)
             )
             con.commit()
-            return jsonify({'messagem': 'Login realizado com sucesso','usuario':{
-                'id': id_usuario,
-                'nome': nome,
-            }}),200
+            token = gerar_token(id_usuario)
+            
+            resp = make_response(jsonify({'mensagem':'Logado com sucesso!'}),200)
+            resp.set_cookie(
+                            'access_token', token,
+                            httponly=True,
+                            secure=False,
+                            samesite="Lax",
+                            path="/",
+                            max_age=3600
+            )
+            return resp
         else:
+            if tipo == 2:
+                return jsonify({'erro': 'Email ou Senha esta incorreta'}), 401
             cur.execute(
                 "UPDATE USUARIO SET ERRO = ERRO + 1 WHERE ID_USUARIO = ?",
                 (id_usuario,)
@@ -431,3 +441,14 @@ def excluir_usuario(id_usuario):
     finally:
         cur.close()
 
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    resp = make_response(jsonify({'mensagem': 'Logout realizado'}), 200)
+    resp.delete_cookie(
+        'access_token',
+        path='/',
+        samesite='Lax',
+        secure=False
+    )
+    return resp

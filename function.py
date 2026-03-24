@@ -69,6 +69,15 @@ def enviando_email(destinatario, assunto, mensagem_html):
     except Exception as e:
         print(f"Erro ao enviar e-mail para {destinatario}: {e}")
 
+senha_secreta = app.config['SECRET_KEY']
+def gerar_token(id_user):
+    payload = {
+        'id_user' : id_user,
+        'timestamp' : datetime.datetime.utcnow().isoformat(),
+        'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+    }
+    token = jwt.encode(payload, senha_secreta, algorithm='HS256')
+    return token
 
 
 
