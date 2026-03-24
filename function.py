@@ -9,10 +9,32 @@ from flask import request, jsonify
 import threading, smtplib
 import jwt, datetime
 from main import app
+from flask_bcrypt import generate_password_hash, check_password_hash
 
 
 def gerar_codigo(tamanho=6):
     return ''.join(random.choices(string.digits, k=tamanho))
+
+
+def verificar_senha_repetida(id_usuario, nova_senha, cur):
+    senhas_para_checar = []
+    cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
+    atual = cur.fetchone()
+    if atual and atual[0]:
+        senhas_para_checar.append(atual[0])
+
+    cur.execute("SELECT SENHA_NOVA, SENHA_NOVISSIMA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
+    antigas = cur.fetchone()
+    if antigas:
+        if antigas[0]: senhas_para_checar.append(antigas[0])
+        if antigas[1]: senhas_para_checar.append(antigas[1])
+
+    for senha_banco in senhas_para_checar:
+        if check_password_hash(senha_banco, nova_senha):
+            return True
+
+    return False
+
 
 def verificar_senha(senha):
 
