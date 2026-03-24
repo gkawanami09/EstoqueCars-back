@@ -95,6 +95,7 @@ def confirmar_email():
 
 @app.route('/editar_usuario/<int:id_usuario>', methods=['POST'])
 def editar_usuario(id_usuario):
+    cur = con.cursor()
     try:
         nome = request.form.get('nome')
         telefone = request.form.get('telefone')
@@ -102,8 +103,6 @@ def editar_usuario(id_usuario):
         senha = request.form.get('senha')
         cpf = request.form.get('cpf')
         foto_perfil = request.files.get('foto_perfil')
-
-        cur = con.cursor()
 
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         if not cur.fetchone():
@@ -269,6 +268,7 @@ def enviar_email():
 
 @app.route('/codigo_verificacao', methods=['POST'])
 def codigo_verificacao():
+    cur = con.cursor()
     try:
         dados = request.get_json()
         email = dados.get('email')
@@ -276,7 +276,7 @@ def codigo_verificacao():
         if not email:
             return jsonify({'erro': 'O e-mail é obrigatório.'}), 400
 
-        cur = con.cursor()
+        
         cur.execute("SELECT ID_USUARIO, NOME FROM USUARIO WHERE TRIM(EMAIL) = ?", (email,))
         usuario = cur.fetchone()
 
@@ -308,6 +308,7 @@ def codigo_verificacao():
 
 @app.route('/recuperar_senha', methods=['POST'])
 def recuperar_senha():
+    cur = con.cursor()
     try:
         dados = request.get_json()
         email = dados.get('email')
@@ -321,7 +322,6 @@ def recuperar_senha():
         if erro_senha:
             return jsonify({'erro_senha': erro_senha}), 400
 
-        cur = con.cursor()
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
         usuario = cur.fetchone()
 
@@ -387,8 +387,10 @@ def recuperar_senha():
 @app.route('/listar_usuario', methods=['GET'])
 def listar_usuario():
     token = request.cookies.get('access_token')
+    cur = con.cursor()
     if not token:
         return jsonify({"mensagem" : "token de autenticação necessária"}), 401
+        
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     except jwt.ExpiredSignatureError:
@@ -396,7 +398,6 @@ def listar_usuario():
     except jwt.InvalidTokenError:
         return jsonify({"mensagem" : "token invalido"}),401
     try:
-        cur = con.cursor()
         cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE FROM USUARIO")
         usuarios = cur.fetchall()
 
@@ -418,8 +419,8 @@ def listar_usuario():
 
 @app.route('/buscar_usuario/<string:nome>', methods=['GET'])
 def buscar_usuario(nome):
+    cur = con.cursor()
     try:
-        cur = con.cursor()
         cur.execute(
             "SELECT NOME, EMAIL, CPF, TELEFONE FROM USUARIO WHERE LOWER(NOME) LIKE LOWER(?)",
             (f"%{nome}%",)
@@ -447,9 +448,8 @@ def buscar_usuario(nome):
 
 @app.route('/excluir_usuario/<int:id_usuario>', methods=['DELETE'])
 def excluir_usuario(id_usuario):
+    cur = con.cursor()
     try:
-        cur = con.cursor()
-
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_usuario,))
         if not cur.fetchone():
             return jsonify({'erro': 'Usuário não encontrado'}), 404
@@ -529,9 +529,9 @@ def desbloquear_usuario(id_bloqueado):
 @app.route('/bloquerar_usuario/<int:id_bloqueado>',methods=['PUT'])
 def bloquerar_usuario(id_bloqueado):
     token = request.cookies.get('access_token')
+     cur = con.cursor()
     if not token:
         return jsonify({'erro':'Acesso negado Token invalido.'}), 401
-    cur = con.cursor()
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
