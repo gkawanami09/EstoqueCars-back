@@ -483,21 +483,21 @@ def logout():
     )
     return resp
 
-
 @app.route('/desbloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def desbloquear_usuario(id_bloqueado):
-    #  Verificar se o token existe nos cookies
+    # Verificar se o token existe nos cookies
     token = request.cookies.get('access_token')
+    cur = con.cursor()
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
 
     try:
-        #  Decodificar o token para saber quem está tentando desbloquear
+        # Decodificar o token para saber quem está tentando desbloquear
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-        id_adm = payload['id_usuario']
+        id_adm = payload['id_user']
 
-        cur = con.cursor()
-        
+
+
         # Verificar no banco se esse id_adm realmente é um Administrador (tipo 2)
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
         usuario_logado = cur.fetchone()
@@ -505,12 +505,12 @@ def desbloquear_usuario(id_bloqueado):
         if not usuario_logado or usuario_logado[0] != 2:
             return jsonify({'erro': 'Acesso restrito apenas para administradores.'}), 403
 
-        # Se chegou aqui, é ADM. Agora verifica se o usuário a ser desbloqueado existe
+        # Verifica se o usuário a ser desbloqueado existe
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_bloqueado,))
         if not cur.fetchone():
             return jsonify({'erro': 'Usuário alvo não encontrado.'}), 404
 
-        #  Executa o desbloqueio
+        # Executa o desbloqueio (zera os erros e volta a situação para 0)
         cur.execute("UPDATE USUARIO SET SITUACAO = 0, ERRO = 0 WHERE ID_USUARIO = ?", (id_bloqueado,))
         con.commit()
 
@@ -518,7 +518,43 @@ def desbloquear_usuario(id_bloqueado):
 
     except jwt.ExpiredSignatureError:
         return jsonify({"erro": "Sessão expirada. Faça login novamente."}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"erro": "Token inválido ou adulterado."}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao desbloquear: {e}'}), 500
     finally:
+        if cur:
+            cur.close()
+
+@app.route('/bloquerar_usuario/<int:id_bloqueado>',methods=['PUT'])
+def bloquerar_usuario(id_bloqueado):
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({'erro':'Acesso negado Token invalido.'}), 401
+    cur = con.cursor()
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
+        usuario_logado = cur.fetchone()
+        if not usuario_logado or usuario_logado[0] != 2:
+            return jsonify({'':''})
+
+        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?",(id_bloqueado,))
+        if not cur.fetchone():
+            return jsonify({'erro':'Usuário não encontrado.'}), 404
+
+        cur.execute("UPDATE USUARIO SET SITUACAO = 1 WHERE ID_USUARIO = ?",(id_bloqueado,))
+        con.commit()
+
+        return  jsonify({'messagem':'Usuário bloqueado com sucessso'}), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao bloquear: {e}'}), 500
+    finally:
         cur.close()
+
