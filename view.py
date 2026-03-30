@@ -26,7 +26,7 @@ def criar_usuario():
 
 
 
-        if not nome:
+        if not nome or nome.split() == None:
             return jsonify({'erro': 'Esse campo é obrigatório.'}), 400
         if not email or not senha:
             return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
@@ -118,15 +118,12 @@ def confirmar_email():
 def editar_usuario(id_usuario):
     cur = con.cursor()
     try:
-        # 1. Primeiro, busca os dados atuais do usuário para não sobrescrever com NULL
-        # caso você mande APENAS a foto no Postman
         cur.execute("SELECT NOME, TELEFONE, EMAIL, CPF FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         usuario_atual = cur.fetchone()
 
         if not usuario_atual:
             return jsonify({'erro': 'Usuário não encontrado.'}), 404
 
-        # Pega os dados do form, ou mantém o que já está no banco se vier vazio
         nome = request.form.get('nome') or usuario_atual[0]
         telefone = request.form.get('telefone') or usuario_atual[1]
         email = request.form.get('email') or usuario_atual[2]
@@ -134,7 +131,6 @@ def editar_usuario(id_usuario):
         senha = request.form.get('senha')
         foto_perfil = request.files.get('foto_perfil')
 
-        # 2. Correção: Adicionado "AND ID_USUARIO != ?" para não dar conflito com os dados do PRÓPRIO usuário
         cur.execute("""
                     SELECT EMAIL,  CPF, TELEFONE
                     FROM USUARIO
@@ -185,7 +181,6 @@ def editar_usuario(id_usuario):
                         WHERE ID_USUARIO = ?
                         """, (nome, telefone, email, cpf, id_usuario))
 
-        # 3. Salva a foto normalmente
         if foto_perfil:
             nome_imagem = f'{email}.jpg'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
@@ -373,7 +368,7 @@ def recuperar_senha():
         recuperacao = cur.fetchone()
 
         if not recuperacao:
-            return jsonify({'erro': 'C?digo inv?lido'}), 400
+            return jsonify({'erro': 'Código inválido'}), 400
 
         id_recupera = recuperacao[0]
 
