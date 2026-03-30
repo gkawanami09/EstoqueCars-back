@@ -5,7 +5,7 @@ import os
 import datetime
 import threading
 import jwt
-from function import verificar_senha, enviando_email, gerar_codigo, gerar_token,verificar_senha_repetida
+from function import verificar_senha, enviando_email, gerar_codigo, gerar_token,verificar_senha_repetida, atualizar_historico_senhas
 from main import app, con
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -46,7 +46,7 @@ def criar_usuario():
 
 
         cur.execute("""INSERT INTO USUARIO (NOME, EMAIL, TELEFONE, SENHA_HASH, CPF, SITUACAO, CODIGO_ATIVACAO) 
-                               VALUES (?, ?, ?, ?, ?, 3, ?)""",
+                               VALUES (?, ?, ?, ?, ?, 2, ?)""",
                     (nome, email, telefone, senha_hash, cpf, codigo_ativacao))
         con.commit()
 
@@ -88,9 +88,7 @@ def confirmar_email():
         return jsonify({'mensagem': 'E-mail confirmado com sucesso! Você já pode fazer login.'}), 200
 
     except Exception as e:
-        return jsonify({'erro': f'Erro ao confirmar e-mail: {e}'}), 500
-    finally:
-        cur.close()
+        return jsonify({'erro': f'Erro ao confirmar e-mail: {e}'}), 500 
 
 
 @app.route('/editar_usuario/<int:id_usuario>', methods=['POST'])
@@ -108,6 +106,15 @@ def editar_usuario(id_usuario):
         if not cur.fetchone():
             return jsonify({'erro': 'Usuário não encontrado.'}), 404
 
+        if not nome:
+            return jsonify({'erro': 'Nome é obrigatório.'}), 400
+        if not email:
+            return jsonify({'erro': 'Email é obrigatório.'}), 400
+
+        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ? AND ID_USUARIO <> ?", (email, id_usuario))
+        if cur.fetchone():
+            return jsonify({'erro': 'Email já cadastrado.'}), 409
+
         if senha:
             erro_senha = verificar_senha(senha)
             if erro_senha:
@@ -118,18 +125,7 @@ def editar_usuario(id_usuario):
                 return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
 
 
-            cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
-            senha_atual_banco = cur.fetchone()[0]
-
-            cur.execute("SELECT SENHA_NOVA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
-            historico = cur.fetchone()
-
-            if historico:
-                cur.execute("UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
-                            (historico[0], senha_atual_banco, id_usuario))
-            else:
-                cur.execute("INSERT INTO SENHA (ID_USUARIO, SENHA_NOVA) VALUES (?, ?)",
-                            (id_usuario, senha_atual_banco))
+            atualizar_historico_senhas(id_usuario, cur)
 
 
             senha_hash = generate_password_hash(senha)
@@ -347,18 +343,7 @@ def recuperar_senha():
 
         id_recupera = recuperacao[0]
 
-        cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
-        senha_atual_banco = cur.fetchone()[0]
-
-        cur.execute("SELECT SENHA_NOVA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
-        historico = cur.fetchone()
-
-        if historico:
-            cur.execute("UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
-                        (historico[0], senha_atual_banco, id_usuario))
-        else:
-            cur.execute("INSERT INTO SENHA (ID_USUARIO, SENHA_NOVA) VALUES (?, ?)",
-                        (id_usuario, senha_atual_banco))
+        atualizar_historico_senhas(id_usuario, cur)
 
 
         senha_hash = generate_password_hash(nova_senha)
@@ -529,7 +514,7 @@ def desbloquear_usuario(id_bloqueado):
 @app.route('/bloquerar_usuario/<int:id_bloqueado>',methods=['PUT'])
 def bloquerar_usuario(id_bloqueado):
     token = request.cookies.get('access_token')
-     cur = con.cursor()
+    cur = con.cursor()
     if not token:
         return jsonify({'erro':'Acesso negado Token invalido.'}), 401
     try:

@@ -47,6 +47,25 @@ def verificar_senha_repetida(id_usuario, nova_senha, cur):
     return False
 
 
+def atualizar_historico_senhas(id_usuario, cur):
+    cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
+    senha_atual_banco = cur.fetchone()[0]
+
+    cur.execute("SELECT SENHA_NOVA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
+    historico = cur.fetchone()
+
+    if historico:
+        cur.execute(
+            "UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
+            (historico[0], senha_atual_banco, id_usuario),
+        )
+    else:
+        cur.execute(
+            "INSERT INTO SENHA (ID_USUARIO, SENHA_NOVA) VALUES (?, ?)",
+            (id_usuario, senha_atual_banco),
+        )
+
+
 def verificar_senha(senha):
 
     if len(senha) < 10:
