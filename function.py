@@ -15,56 +15,44 @@ from flask_bcrypt import generate_password_hash, check_password_hash
 def gerar_codigo(tamanho=6):
     return ''.join(random.choices(string.digits, k=tamanho))
 
-def verificar_senha_repetida(id_usuario, nova_senha, cur):
-    #Cria uma lista vazia que vai guardar todas as senhas antigas (em formato hash)
-    senhas_para_checar = []
-    #Busca no banco de dados a senha ATUAL que o usuário está usando
+def atualizar_historico_senhas(id_usuario, nova_senha, cur):
+    # Busca a senha atual do usuario
     cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
-    atual = cur.fetchone()# Pega apenas o primeiro resultado encontrado
-    # Se encontrou a senha atual e ela não é vazia, adiciona na nossa lista
-    if atual and atual[0]:
-        senhas_para_checar.append(atual[0])
+    atual_row = cur.fetchone()
+    senha_atual_banco = atual_row[0] if atual_row else None
 
-    #Busca no banco de dados o histórico das duas senhas mais antigas
+    # Busca o historico das duas ultimas senhas
     cur.execute("SELECT SENHA_NOVA, SENHA_NOVISSIMA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
-    antigas = cur.fetchone()
-    # Se o usuário tiver um histórico de senhas salvo...
-    if antigas:
-        if antigas[0]: senhas_para_checar.append(antigas[0])
-        if antigas[1]: senhas_para_checar.append(antigas[1])
-
-    # 4. Fase de Verificação (A Mágica da Criptografia)
-    # Vamos passar por cada hash de senha antiga que guardamos na nossa lista
-    for senha_banco in senhas_para_checar:
-        # O check_password_hash traduz a criptografia.
-        # Ele testa se a 'nova_senha' (texto puro, ex: "12345") gera o mesmo
-        # resultado do 'senha_banco' (texto criptografado).
-        if check_password_hash(senha_banco, nova_senha):
-            # Se bater, significa que ele já usou essa senha. Retorna True (Repetida!)
-            return True
-    # Se o loop terminar e não encontrar nenhuma repetição, a senha é inédita.
-    # Retorna False (Não é repetida, pode prosseguir!)
-    return False
-
-
-def atualizar_historico_senhas(id_usuario, cur):
-    cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
-    senha_atual_banco = cur.fetchone()[0]
-
-    cur.execute("SELECT SENHA_NOVA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
     historico = cur.fetchone()
 
+    # Checa repeticao nas 3 ultimas senhas (atual + 2 anteriores)
+    senhas_para_checar = []
+    if senha_atual_banco:
+        senhas_para_checar.append(senha_atual_banco)
     if historico:
-        cur.execute(
-            "UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
-            (historico[0], senha_atual_banco, id_usuario),
-        )
-    else:
-        cur.execute(
-            "INSERT INTO SENHA (ID_USUARIO, SENHA_NOVA) VALUES (?, ?)",
-            (id_usuario, senha_atual_banco),
-        )
+        if historico[0]:
+            senhas_para_checar.append(historico[0])
+        if historico[1]:
+            senhas_para_checar.append(historico[1])
 
+    for senha_banco in senhas_para_checar:
+        if check_password_hash(senha_banco, nova_senha):
+            return True
+
+    # Atualiza o historico com a senha atual (antes de trocar pela nova)
+    if senha_atual_banco:
+        if historico:
+            cur.execute(
+                "UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
+                (historico[0], senha_atual_banco, id_usuario),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO SENHA (ID_USUARIO, SENHA_NOVA) VALUES (?, ?)",
+                (id_usuario, senha_atual_banco),
+            )
+
+    return False
 
 def verificar_senha(senha):
 

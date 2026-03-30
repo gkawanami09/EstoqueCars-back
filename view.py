@@ -1,15 +1,17 @@
-﻿from tempfile import template
-from flask import Flask, jsonify, request, Response, make_response,render_template
+﻿from email.policy import EmailPolicy
+from tempfile import template
+from flask import Flask, jsonify, request, Response, make_response, render_template
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import datetime
 import threading
 import jwt
-from function import verificar_senha, enviando_email, gerar_codigo, gerar_token,verificar_senha_repetida, atualizar_historico_senhas
+from function import verificar_senha, enviando_email, gerar_codigo, gerar_token, atualizar_historico_senhas
 from main import app, con
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
+
 
 @app.route('/criar_usuario', methods=['POST'])
 def criar_usuario():
@@ -22,13 +24,14 @@ def criar_usuario():
         cpf = request.form.get('cpf')
         foto_perfil = request.files.get('foto_perfil')
 
-        erro_senha = verificar_senha(senha)
+
 
         if not nome:
             return jsonify({'erro': 'Esse campo é obrigatório.'}), 400
         if not email or not senha:
             return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
 
+        erro_senha = verificar_senha(senha)
         if erro_senha:
             return jsonify({'erro': erro_senha}), 400
 
@@ -37,16 +40,34 @@ def criar_usuario():
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
 
+        cur.execute("""
+                    SELECT EMAIL, CPF, TELEFONE
+                    FROM USUARIO
+                    WHERE EMAIL = ?
+                       OR CPF = ?
+                       OR TELEFONE = ?
+                    """, (email,  cpf, telefone))
+
+        conflito = cur.fetchone()
+        if conflito:
+            if conflito[0] == email:
+                return jsonify({'erro': 'E-mail já cadastrado'}), 409
+            if conflito[1] == cpf:
+                return jsonify({'erro': 'Cpf já cadastrado'}), 409
+            if conflito[2] == telefone:
+                return jsonify({'erro': 'Telefone já cadastrado'}), 409
+
         senha_hash = generate_password_hash(senha)
         codigo_ativacao = gerar_codigo()
 
-        cur.execute("""SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ? """, (email,))
-        if cur.fetchone():
-            return jsonify({'erro': 'Email já cadastrado.'}), 409
 
-
-        cur.execute("""INSERT INTO USUARIO (NOME, EMAIL, TELEFONE, SENHA_HASH, CPF, SITUACAO, CODIGO_ATIVACAO) 
-                               VALUES (?, ?, ?, ?, ?, 2, ?)""",
+        cur.execute("""INSERT INTO USUARIO (NOME, 
+                                            EMAIL,
+                                            TELEFONE,
+                                            SENHA_HASH, 
+                                            CPF, SITUACAO, 
+                                            CODIGO_ATIVACAO)
+                       VALUES (?, ?, ?, ?, ?, 2, ?)""",
                     (nome, email, telefone, senha_hash, cpf, codigo_ativacao))
         con.commit()
 
@@ -88,44 +109,58 @@ def confirmar_email():
         return jsonify({'mensagem': 'E-mail confirmado com sucesso! Você já pode fazer login.'}), 200
 
     except Exception as e:
-        return jsonify({'erro': f'Erro ao confirmar e-mail: {e}'}), 500 
+        return jsonify({'erro': f'Erro ao confirmar e-mail: {e}'}), 500
+    finally:
+        cur.close()
 
 
 @app.route('/editar_usuario/<int:id_usuario>', methods=['POST'])
 def editar_usuario(id_usuario):
     cur = con.cursor()
     try:
-        nome = request.form.get('nome')
-        telefone = request.form.get('telefone')
-        email = request.form.get('email')
-        senha = request.form.get('senha')
-        cpf = request.form.get('cpf')
-        foto_perfil = request.files.get('foto_perfil')
+        # 1. Primeiro, busca os dados atuais do usuário para não sobrescrever com NULL
+        # caso você mande APENAS a foto no Postman
+        cur.execute("SELECT NOME, TELEFONE, EMAIL, CPF FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
+        usuario_atual = cur.fetchone()
 
-        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
-        if not cur.fetchone():
+        if not usuario_atual:
             return jsonify({'erro': 'Usuário não encontrado.'}), 404
 
-        if not nome:
-            return jsonify({'erro': 'Nome é obrigatório.'}), 400
-        if not email:
-            return jsonify({'erro': 'Email é obrigatório.'}), 400
+        # Pega os dados do form, ou mantém o que já está no banco se vier vazio
+        nome = request.form.get('nome') or usuario_atual[0]
+        telefone = request.form.get('telefone') or usuario_atual[1]
+        email = request.form.get('email') or usuario_atual[2]
+        cpf = request.form.get('cpf') or usuario_atual[3]
+        senha = request.form.get('senha')
+        foto_perfil = request.files.get('foto_perfil')
 
-        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ? AND ID_USUARIO <> ?", (email, id_usuario))
-        if cur.fetchone():
-            return jsonify({'erro': 'Email já cadastrado.'}), 409
+        # 2. Correção: Adicionado "AND ID_USUARIO != ?" para não dar conflito com os dados do PRÓPRIO usuário
+        cur.execute("""
+                    SELECT EMAIL,  CPF, TELEFONE
+                    FROM USUARIO
+                    WHERE (EMAIL = ? OR CPF = ? OR TELEFONE = ?)
+                      AND ID_USUARIO != ?
+                    """, (email,  cpf, telefone, id_usuario))
+
+        conflito = cur.fetchone()
+        if conflito:
+            if conflito[0] == email:
+                return jsonify({'erro': 'E-mail já está sendo usado'}), 409
+            if conflito[1] == cpf:
+                return jsonify({'erro': 'Cpf já está sendo usado '}), 409
+            if conflito[2] == telefone:
+                return jsonify({'erro': 'Telefone já está sendo usado '}), 409
 
         if senha:
             erro_senha = verificar_senha(senha)
             if erro_senha:
                 return jsonify({'erro': erro_senha}), 400
+            
+            
 
-
-            if verificar_senha_repetida(id_usuario, senha, cur):
+            if atualizar_historico_senhas(id_usuario, senha, cur):
                 return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
-
-
-            atualizar_historico_senhas(id_usuario, cur)
+            
 
 
             senha_hash = generate_password_hash(senha)
@@ -150,8 +185,9 @@ def editar_usuario(id_usuario):
                         WHERE ID_USUARIO = ?
                         """, (nome, telefone, email, cpf, id_usuario))
 
+        # 3. Salva a foto normalmente
         if foto_perfil:
-            nome_imagem = f'perfil_{id_usuario}.jpg'
+            nome_imagem = f'{email}.jpg'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
 
@@ -177,7 +213,9 @@ def login():
             return jsonify({'erro': 'Preencha todos os campos'}), 400
 
         cur.execute(
-            """SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO, TIPO_USUARIO FROM USUARIO WHERE EMAIL = ?""",
+            """SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO, TIPO_USUARIO
+               FROM USUARIO
+               WHERE EMAIL = ?""",
             (email,))
         usuario = cur.fetchone()
 
@@ -235,7 +273,7 @@ def login():
                     (id_usuario,)
                 )
                 con.commit()
-                return jsonify({'erro': 'Usuario bloqueado'}), 401
+                return jsonify({'erro': 'Usuário bloqueado por excesso de tentativas. Clique em "Esqueci minha senha" para desbloquear sua conta.'}), 401
 
             return jsonify({'erro': 'Email ou Senha está incorreta'}), 401
     except Exception as e:
@@ -272,7 +310,6 @@ def codigo_verificacao():
         if not email:
             return jsonify({'erro': 'O e-mail é obrigatório.'}), 400
 
-        
         cur.execute("SELECT ID_USUARIO, NOME FROM USUARIO WHERE TRIM(EMAIL) = ?", (email,))
         usuario = cur.fetchone()
 
@@ -286,7 +323,6 @@ def codigo_verificacao():
 
         cur.execute("INSERT INTO RECUPERAR_SENHA (ID_USUARIO, CODIGO) VALUES (?, ?)", (id_usuario, codigo))
         con.commit()
-
 
         assunto = "Recuperação de Senha - Estoque Cars"
         template_html = render_template('email_recuperacao.html', nome=nome, codigo=codigo)
@@ -326,30 +362,28 @@ def recuperar_senha():
 
         id_usuario = usuario[0]
 
-
-        if verificar_senha_repetida(id_usuario, nova_senha, cur):
-            return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
-
         cur.execute("""
-            SELECT ID_RECUPERA 
-            FROM RECUPERAR_SENHA 
-            WHERE ID_USUARIO = ? AND CODIGO = ? AND USADO_EM IS NULL
-        """, (id_usuario, codigo))
+                    SELECT ID_RECUPERA
+                    FROM RECUPERAR_SENHA
+                    WHERE ID_USUARIO = ?
+                      AND CODIGO = ?
+                      AND USADO_EM IS NULL
+                    """, (id_usuario, codigo))
 
         recuperacao = cur.fetchone()
 
         if not recuperacao:
-            return jsonify({'erro': 'Código inválido'}), 400
+            return jsonify({'erro': 'C?digo inv?lido'}), 400
 
         id_recupera = recuperacao[0]
 
-        atualizar_historico_senhas(id_usuario, cur)
-
+        if atualizar_historico_senhas(id_usuario, nova_senha, cur):
+            return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
 
         senha_hash = generate_password_hash(nova_senha)
 
         cur.execute(
-            "UPDATE USUARIO SET SENHA_HASH = ? WHERE ID_USUARIO = ?",
+            "UPDATE USUARIO SET SENHA_HASH = ? ,ERRO = 0 , SITUACAO = 0 WHERE ID_USUARIO = ?",
             (senha_hash, id_usuario)
         )
 
@@ -368,20 +402,19 @@ def recuperar_senha():
     finally:
         cur.close()
 
-
 @app.route('/listar_usuario', methods=['GET'])
 def listar_usuario():
     token = request.cookies.get('access_token')
     cur = con.cursor()
     if not token:
-        return jsonify({"mensagem" : "token de autenticação necessária"}), 401
-        
+        return jsonify({"mensagem": "token de autenticação necessária"}), 401
+
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     except jwt.ExpiredSignatureError:
-        return jsonify({"mensagem" : "token expirado"}),401
+        return jsonify({"mensagem": "token expirado"}), 401
     except jwt.InvalidTokenError:
-        return jsonify({"mensagem" : "token invalido"}),401
+        return jsonify({"mensagem": "token invalido"}), 401
     try:
         cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE FROM USUARIO")
         usuarios = cur.fetchall()
@@ -404,8 +437,20 @@ def listar_usuario():
 
 @app.route('/buscar_usuario/<string:nome>', methods=['GET'])
 def buscar_usuario(nome):
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
     cur = con.cursor()
     try:
+
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
+        usuarios = cur.fetchone()
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+
+
         cur.execute(
             "SELECT NOME, EMAIL, CPF, TELEFONE FROM USUARIO WHERE LOWER(NOME) LIKE LOWER(?)",
             (f"%{nome}%",)
@@ -424,33 +469,56 @@ def buscar_usuario(nome):
                 'telefone': u[3]
             })
 
-        return jsonify(usuario), 200
+        return jsonify(dados), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente por gentileza.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token invalido'}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao buscar usuário: {e}'}), 500
     finally:
         cur.close()
 
-
 @app.route('/excluir_usuario/<int:id_usuario>', methods=['DELETE'])
 def excluir_usuario(id_usuario):
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
     cur = con.cursor()
     try:
-        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_usuario,))
-        if not cur.fetchone():
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
+        usuarios = cur.fetchone()
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro':'Acesso restrito. Apenas Administradores pode acessar'}), 403
+
+        if id_adm == id_usuario:
+            return jsonify({'erro':'Operação não permitida você não pode exculir sua própria conta '}),403
+
+        cur.execute("SELECT EMAIL FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
+        usuario = cur.fetchone()
+        if not usuario:
             return jsonify({'erro': 'Usuário não encontrado'}), 404
+        email = usuario[0]
 
         cur.execute("DELETE FROM RECUPERAR_SENHA WHERE ID_USUARIO = ?", (id_usuario,))
         cur.execute("DELETE FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
         cur.execute("DELETE FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         con.commit()
 
-        nome_imagem = f'perfil{id_usuario}.jpg'
+        nome_imagem = f'{email}.jpg'
         caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
         if os.path.exists(caminho_foto):
             os.remove(caminho_foto)
 
         return jsonify({'mensagem': 'Usuário removido com sucesso'}), 200
 
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro':'Sessão expirada. Faça login novamente por gentileza.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token invalido'}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao excluir usuário: {e}'}), 500
     finally:
@@ -459,7 +527,7 @@ def excluir_usuario(id_usuario):
 
 @app.route('/logout', methods=['POST'])
 def logout():
-    resp = make_response(jsonify({'mensagem': 'Logout realizado'}), 200)
+    resp = make_response(jsonify({'mensagem': 'Logout realizado com sucesso'}), 200)
     resp.delete_cookie(
         'access_token',
         path='/',
@@ -467,6 +535,7 @@ def logout():
         secure=False
     )
     return resp
+
 
 @app.route('/desbloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def desbloquear_usuario(id_bloqueado):
@@ -480,8 +549,6 @@ def desbloquear_usuario(id_bloqueado):
         # Decodificar o token para saber quem está tentando desbloquear
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
-
-
 
         # Verificar no banco se esse id_adm realmente é um Administrador (tipo 2)
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
@@ -511,28 +578,39 @@ def desbloquear_usuario(id_bloqueado):
         if cur:
             cur.close()
 
-@app.route('/bloquerar_usuario/<int:id_bloqueado>',methods=['PUT'])
-def bloquerar_usuario(id_bloqueado):
+
+@app.route('/bloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
+def bloquear_usuario(id_bloqueado):
     token = request.cookies.get('access_token')
     cur = con.cursor()
+
     if not token:
-        return jsonify({'erro':'Acesso negado Token invalido.'}), 401
+        return jsonify({'erro': 'Acesso negado. Token inválido.'}), 401
+
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
+
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
         usuario_logado = cur.fetchone()
+
         if not usuario_logado or usuario_logado[0] != 2:
-            return jsonify({'':''})
+            return jsonify({'erro': 'Apenas administradores podem bloquear usuário.'}), 403
 
-        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?",(id_bloqueado,))
+        # impedir bloquear a sdi mesmo
+        if id_adm == id_bloqueado:
+            return jsonify({'erro': 'Você não pode bloquear sua própria conta.'}), 400
+
+        # verificar se existe
+        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_bloqueado,))
         if not cur.fetchone():
-            return jsonify({'erro':'Usuário não encontrado.'}), 404
+            return jsonify({'erro': 'Usuário não encontrado.'}), 404
 
-        cur.execute("UPDATE USUARIO SET SITUACAO = 1 WHERE ID_USUARIO = ?",(id_bloqueado,))
+        # bloquear
+        cur.execute("UPDATE USUARIO SET SITUACAO = 1 WHERE ID_USUARIO = ?", (id_bloqueado,))
         con.commit()
 
-        return  jsonify({'messagem':'Usuário bloqueado com sucessso'}), 200
+        return jsonify({'mensagem': 'Usuário bloqueado com sucesso!'}), 200
 
     except jwt.ExpiredSignatureError:
         return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
@@ -542,4 +620,3 @@ def bloquerar_usuario(id_bloqueado):
         return jsonify({'erro': f'Erro ao bloquear: {e}'}), 500
     finally:
         cur.close()
-
