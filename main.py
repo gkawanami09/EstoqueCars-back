@@ -11,6 +11,8 @@ database = app.config['DB_NAME']
 user = app.config['DB_USER']
 password = app.config['DB_PASSWORD']
 
+CORS(app, origins=["http://localhost:5173"], supports_credentials=True)
+
 try:
     con = fdb.connect(host=host, database=database, user=user, password=password)
     print('Conectado com sucessso')
@@ -20,4 +22,4 @@ except Exception as e:
 from view import *
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=6000)
+    app.run(host='0.0.0.0', port=5000)

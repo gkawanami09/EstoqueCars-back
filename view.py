@@ -27,9 +27,13 @@ def criar_usuario():
 
 
         if not nome or nome.split() == None:
-            return jsonify({'erro': 'Esse campo é obrigatório.'}), 400
+            return jsonify({'erro': 'Nome é obrigatório.'}), 400
         if not email or not senha:
             return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
+        if not cpf:
+            return jsonify({'erro': 'CPF é obrigatórios.'}), 400
+        if not telefone:
+            return jsonify({'erro': 'Telefone é obrigatórios.'}), 400
 
         erro_senha = verificar_senha(senha)
         if erro_senha:
@@ -78,7 +82,7 @@ def criar_usuario():
         thread = threading.Thread(target=enviando_email, args=(email, assunto, template_html))
         thread.start()
 
-        return jsonify({'mensagem': 'Usuário criado com sucesso! Para ativar, verifique o seu e-mail.'}), 201
+        return jsonify({'erro': 0, 'mensagem': 'Usuário criado com sucesso! Para ativar, verifique o seu e-mail.'}), 201
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
