@@ -17,7 +17,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 def criar_usuario():
     cur = con.cursor()
     try:
-        nome = request.form.get('nome')
+        nome = request.form.get('nome').lower()
         telefone = request.form.get('telefone')
         email = request.form.get('email')
         senha = request.form.get('senha')
@@ -72,7 +72,7 @@ def criar_usuario():
                                             CPF, SITUACAO, 
                                             CODIGO_ATIVACAO)
                        VALUES (?, ?, ?, ?, ?, 2, ?)""",
-                    (nome, email, telefone, senha_hash, cpf, codigo_ativacao))
+                    (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao))
         con.commit()
 
         assunto = "Confirme seu cadastro - Estoque Cars"
@@ -222,7 +222,8 @@ def login():
             return jsonify({'erro': 'Email não cadastrado'}), 400
 
         id_usuario = usuario[0]
-        nome = usuario[1]
+        nomeBruto = usuario[1]
+        nome = nomeBruto.strip().split()[0]
         senha_hash = usuario[2]
         situacao = usuario[3]
         erro = usuario[4]
@@ -242,7 +243,7 @@ def login():
             con.commit()
             token = gerar_token(id_usuario)
 
-            resp = make_response(jsonify({'mensagem': 'Logado com sucesso!'}), 200)
+            resp = make_response(jsonify({'nome': nome ,'mensagem': 'Logado com sucesso!'}), 200)
             resp.set_cookie(
                 'access_token', token,
                 httponly=True,
@@ -309,7 +310,7 @@ def codigo_verificacao():
         if not email:
             return jsonify({'erro': 'O e-mail é obrigatório.'}), 400
 
-        cur.execute("SELECT ID_USUARIO, NOME FROM USUARIO WHERE TRIM(EMAIL) = ?", (email,))
+        cur.execute("SELECT ID_USUARIO, NOME, SITUACAO FROM USUARIO WHERE TRIM(EMAIL) = ?", (email,))
         usuario = cur.fetchone()
 
         if usuario is None:
@@ -317,7 +318,12 @@ def codigo_verificacao():
 
         id_usuario = usuario[0]
         nome = usuario[1]
+        situacao = usuario[2]
 
+        
+        if situacao == 1:
+            return jsonify({'erro':'Usuario bloqueado. Entre em contato com o suporte para desbloquear sua conta.'}), 404
+        
         codigo = gerar_codigo()
 
         cur.execute("INSERT INTO RECUPERAR_SENHA (ID_USUARIO, CODIGO) VALUES (?, ?)", (id_usuario, codigo))
