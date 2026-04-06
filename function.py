@@ -18,29 +18,41 @@ def gerar_codigo(tamanho=6):
 def atualizar_historico_senhas(id_usuario, nova_senha, cur):
     # Busca a senha atual do usuario
     cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
+     # Pega o resultado da consulta (uma linha)
     atual_row = cur.fetchone()
+    # Se encontrou a senha, pega o valor; senão, fica como None
     senha_atual_banco = atual_row[0] if atual_row else None
 
     # Busca o historico das duas ultimas senhas
     cur.execute("SELECT SENHA_NOVA, SENHA_NOVISSIMA FROM SENHA WHERE ID_USUARIO = ?", (id_usuario,))
+     # Pega o resultado da consulta
     historico = cur.fetchone()
 
-    # Checa repeticao nas 3 ultimas senhas (atual + 2 anteriores)
+    # Lista que vai armazenar todas as senhas para comparação
+    # (senha atual + duas anteriores)
     senhas_para_checar = []
+
+    # Se existe senha atual no banco, adiciona na lista
     if senha_atual_banco:
         senhas_para_checar.append(senha_atual_banco)
     if historico:
         if historico[0]:
+            # Se a coluna SENHA_NOVA não for vazia, adiciona
             senhas_para_checar.append(historico[0])
         if historico[1]:
+            # Se a coluna SENHA_NOVISSIMA não for vazia, adiciona
             senhas_para_checar.append(historico[1])
 
+     # Verifica se a nova senha já foi usada anteriormente
     for senha_banco in senhas_para_checar:
+         # check_password_hash compara a senha digitada com o hash salvo
         if check_password_hash(senha_banco, nova_senha):
+             # Se for igual a alguma antiga, retorna True (senha repetida)
             return True
 
     # Atualiza o historico com a senha atual (antes de trocar pela nova)
     if senha_atual_banco:
+         # Se já existe histórico
         if historico:
             cur.execute(
                 "UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
