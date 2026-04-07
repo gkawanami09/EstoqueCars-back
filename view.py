@@ -273,7 +273,7 @@ def login():
                     (id_usuario,)
                 )
                 con.commit()
-                return jsonify({'erro': 'Usuário bloqueado por excesso de tentativas. Clique em "Esqueci minha senha" para desbloquear sua conta.'}), 401
+                return jsonify({'erro': 'Usuário bloqueado por excesso de tentativas. Entre em contato com o suporte para desbloquear sua conta.'}), 401
 
             return jsonify({'erro': 'Email ou Senha está incorreta'}), 401
     except Exception as e:
@@ -352,12 +352,8 @@ def recuperar_senha():
         codigo = dados.get('codigo')
         nova_senha = dados.get('nova_senha')
 
-        if not email or not codigo or not nova_senha:
-            return jsonify({'erro': 'E-mail, código e nova senha são obrigatórios.'}), 400
-
-        erro_senha = verificar_senha(nova_senha)
-        if erro_senha:
-            return jsonify({'erro_senha': erro_senha}), 400
+        if not email or not codigo:
+            return jsonify({'erro': 'E-mail e código são obrigatórios.'}), 400
 
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
         usuario = cur.fetchone()
@@ -371,8 +367,8 @@ def recuperar_senha():
                     SELECT ID_RECUPERA
                     FROM RECUPERAR_SENHA
                     WHERE ID_USUARIO = ?
-                      AND CODIGO = ?
-                      AND USADO_EM IS NULL
+                    AND CODIGO = ?
+                    AND USADO_EM IS NULL
                     """, (id_usuario, codigo))
 
         recuperacao = cur.fetchone()
@@ -382,6 +378,13 @@ def recuperar_senha():
 
         id_recupera = recuperacao[0]
 
+        if not nova_senha:
+            return jsonify({'mensagem':'Código válido', "valido": True}), 200
+
+        erro_senha = verificar_senha(nova_senha)
+
+        if erro_senha:
+            return jsonify({'erro_senha': erro_senha}), 400
         if atualizar_historico_senhas(id_usuario, nova_senha, cur):
             return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
 
@@ -400,7 +403,7 @@ def recuperar_senha():
         )
 
         con.commit()
-        return jsonify({'mensagem': 'Senha redefinida com sucesso!'}), 200
+        return jsonify({'mensagem': 'Senha redefinida com sucesso!', "validade" : False}), 200
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao redefinir senha: {e}'}), 500
