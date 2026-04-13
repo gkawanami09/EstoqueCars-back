@@ -1,7 +1,7 @@
 from flask import Flask
 import fdb
 from flask_cors import CORS
-import carro
+
 
 app = Flask(__name__)
 
@@ -20,6 +20,7 @@ try:
 except Exception as e:
     print(f'Erro ao conectar: ',e)
 
+import carro
 from view import *
 
 if __name__ == '__main__':

@@ -74,9 +74,11 @@ def criar_usuario():
         id_usuario = cur.fetchone()[0]
 
         if foto_perfil:
-            nome_imagem = f'{id_usuario}.jpg'
+            nome_imagem = f'{id_usuario}.pgn'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
+
+
 
         con.commit()
 
@@ -632,3 +634,5 @@ def bloquear_usuario(id_bloqueado):
         return jsonify({'erro': f'Erro ao bloquear: {e}'}), 500
     finally:
         cur.close()
+
+

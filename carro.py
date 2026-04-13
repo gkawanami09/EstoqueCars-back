@@ -3,6 +3,10 @@ from flask import request, jsonify
 import jwt
 import os
 
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+
 @app.route('/cadastrar_carro', methods=['POST'])
 def cadastrar_carro():
     cur = con.cursor()
@@ -33,14 +37,13 @@ def cadastrar_carro():
         status_estoque = request.form.get('status_estoque')
         placa = request.form.get('placa')
         renavam = request.form.get('renavam')
-
-        imagem_carro = request.files.get('imagem')
+        foto_veiculo = request.files.get('foto_veiculo')
 
         if not all([id_categoria,id_marca,modelo,ano_fabricacao,ano_modelo,preco,placa,renavam]):
             return jsonify({'erro':'Preencha todos os campos obrigatórios.'}),400
         if len(str(renavam)) != 11:
             return jsonify({'erro':'O RENAVAM deve conter 11 dígitos.'}), 400
-        
+
         cur.execute("SELECT PLACA, RENAVAM FROM VEICULO WHERE PLACA = ? OR RENAVAM = ?",(placa,renavam))
         conflito = cur.fetchone()
         if conflito:
@@ -48,31 +51,30 @@ def cadastrar_carro():
                 return jsonify({'erro':'Placa já cadastrada'}),409
             if conflito[1] == renavam:
                 return jsonify({'erro':'Renavam já cadastrado'}),409
- 
 
-        cur.execute ("""
-            INSERT INTO VEICULO (
-                ID_CATEGORIA, ID_MARCA, MODELO, ANO_FABRICACAO, ANO_MODELO, 
-                QUILOMETRAGEM, COR, CAMBIO, PRECO, DESCRICAO, 
-                ESTADO_CONSERVACAO, STATUS_DOCUMENTO, STATUS_ESTOQUE, PLACA, RENAVAM
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            id_categoria, id_marca, modelo, ano_fabricacao, ano_modelo, 
-            quilometragem, cor, cambio, preco, descricao, 
-            estado_conservacao, status_documento, status_estoque, placa, renavam
-        ))
+        cur.execute("""
+                    INSERT INTO VEICULO (ID_CATEGORIA, ID_MARCA, MODELO, ANO_FABRICACAO, ANO_MODELO,
+                                         QUILOMETRAGEM, COR, CAMBIO, PRECO, DESCRICAO,
+                                         ESTADO_CONSERVACAO, STATUS_DOCUMENTO, STATUS_ESTOQUE, PLACA, RENAVAM)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?) RETURNING ID_VEICULO 
+                     """, (
+                        id_categoria, id_marca, modelo, ano_fabricacao, ano_modelo,
+                        quilometragem, cor, cambio, preco, descricao,
+                        estado_conservacao, status_documento, status_estoque, placa, renavam
+                    ))
 
-        iresultado_id = cur.fetchone()
+        resultado_id = cur.fetchone()
         id_veiculo = resultado_id[0]
-         
 
-        if imagem_carro:
-            nome_imagem = f'carro_{id_veiculo}.jpg'
-            imagem_carro.save(os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem))
+        if foto_veiculo:
+            nome_imagem = f'veico_{id_veiculo}.png'
+            caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+            foto_veiculo.save(caminho_foto)
 
         con.commit()
         return jsonify({'mensagem': 'Carro cadastrado com sucesso!'}), 201
-    
+
     except jwt.ExpiredSignatureError:
         return jsonify({"erro": "Sessão expirada. Faça login novamente."}), 401
     except jwt.InvalidTokenError:
@@ -88,18 +90,18 @@ def editar_carro(id_veiculo):
     cur = con.cursor()
     token = request.cookies.get('access_token')
     if not token:
-        return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
-    
+        return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
+
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
-        
+
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
         usuarios = cur.fetchone()
         if not usuarios or usuarios[0] != 2:
             return jsonify({'erro': 'Acesso restrito. Apenas Administradores podem acessar.'}), 403
 
-        
+
         cur.execute("SELECT ID_VEICULO FROM VEICULO WHERE ID_VEICULO = ?", (id_veiculo,))
         if not cur.fetchone():
             return jsonify({'erro': 'Carro não encontrado.'}), 404
@@ -119,15 +121,13 @@ def editar_carro(id_veiculo):
         status_estoque = request.form.get('status_estoque')
         placa = request.form.get('placa')
         renavam = request.form.get('renavam')
-
-        imagem_carro = request.files.get('imagem')
+        foto_veiculo = request.files.get('foto_veiculo')
 
         if not all([id_categoria,id_marca,modelo,ano_fabricacao,ano_modelo,preco,placa,renavam]):
             return jsonify({'erro':'Preencha todos os campos obrigatórios.'}),400
         if len(str(renavam)) != 11:
             return jsonify({'erro':'O RENAVAM deve conter 11 dígitos.'}), 400
-        
-        
+
         cur.execute("SELECT PLACA, RENAVAM FROM VEICULO WHERE (PLACA = ? OR RENAVAM = ?) AND ID_VEICULO != ?", (placa, renavam, id_veiculo))
         conflito = cur.fetchone()
         if conflito:
@@ -135,7 +135,7 @@ def editar_carro(id_veiculo):
                 return jsonify({'erro':'Placa já cadastrada em outro veículo.'}),409
             if conflito[1] == renavam:
                 return jsonify({'erro':'Renavam já cadastrado em outro veículo.'}),409
-            
+
         cur.execute("""
             UPDATE VEICULO SET 
                 ID_CATEGORIA = ?, ID_MARCA = ?, MODELO = ?, ANO_FABRICACAO = ?, ANO_MODELO = ?, 
@@ -143,25 +143,55 @@ def editar_carro(id_veiculo):
                 ESTADO_CONSERVACAO = ?, STATUS_DOCUMENTO = ?, STATUS_ESTOQUE = ?, PLACA = ?, RENAVAM = ?
             WHERE ID_VEICULO = ?
         """, (
-            id_categoria, id_marca, modelo, ano_fabricacao, ano_modelo, 
-            quilometragem, cor, cambio, preco, descricao, 
+            id_categoria, id_marca, modelo, ano_fabricacao, ano_modelo,
+            quilometragem, cor, cambio, preco, descricao,
             estado_conservacao, status_documento, status_estoque, placa, renavam,
             id_veiculo
         ))
 
-        if imagem_carro:
-            nome_imagem = f'carro_{id_veiculo}.jpg'
-            imagem_carro.save(os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem))
+        if foto_veiculo:
+            nome_imagem = f'veico_{id_veiculo}.png'
+            caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+            foto_veiculo.save(caminho_foto)
 
         con.commit()
         return jsonify({'mensagem': 'Carro atualizado com sucesso!'}), 200
-    
+
     except jwt.ExpiredSignatureError:
         return jsonify({"erro": "Sessão expirada. Faça login novamente."}), 401
     except jwt.InvalidTokenError:
         return jsonify({"erro": "Token inválido ou adulterado."}), 401
     except Exception as e:
-        con.rollback()
         return jsonify({'erro': f'Erro ao editar carro: {e}'}), 500
     finally:
         cur.close()
+
+@app.route('/excluir_carro/<id_carro>', methods=['DELETE'])
+def excluir_carro(id_carro):
+
+
+@app.route('/registrar_venda',methods=['POST'])
+def registrar_venda():
+    cur = con.cursor()
+    token = request.form.get('token')
+    if not token:
+        return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
+        usuarios = cur.fetchone()
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro': 'Acesso restrito. Apenas Administradores podem acessar.'}), 403
+
+        id_venda = request.form.get('id_venda')
+        id_usuario = request.form.get('id_usuario')
+        id_veiculo = request.form.get('id_veiculo')
+        forma_pagamento = request.form.get('formato_pagamento')
+        data_venda = request.form.get('data_venda')
+        valor_venda = request.form.get('valor_venda')
+        valor_recebido = request.form.get('valor_recebido')
+        status_pagamento = request.form.get('status_pagamento')
+        comentarios = request.form.get('comentarios')
+        descontos = request.form.get('descontos')
+
