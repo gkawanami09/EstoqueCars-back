@@ -66,6 +66,9 @@ def atualizar_historico_senhas(id_usuario, nova_senha, cur):
 
     return False
 
+#def validacao_renavam(renavam)
+   # if not renavam
+
 def verificar_senha(senha):
 
     if len(senha) < 10:

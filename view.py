@@ -39,11 +39,6 @@ def criar_usuario():
         if erro_senha:
             return jsonify({'erro': erro_senha}), 400
 
-        if foto_perfil:
-            nome_imagem = f'{email}.jpg'
-            caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
-            foto_perfil.save(caminho_foto)
-
         cur.execute("""
                     SELECT EMAIL, CPF, TELEFONE
                     FROM USUARIO
@@ -73,6 +68,16 @@ def criar_usuario():
                                             CODIGO_ATIVACAO)
                        VALUES (?, ?, ?, ?, ?, 2, ?)""",
                     (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao))
+
+       
+        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
+        id_usuario = cur.fetchone()[0]
+
+        if foto_perfil:
+            nome_imagem = f'{id_usuario}.jpg'
+            caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+            foto_perfil.save(caminho_foto)
+
         con.commit()
 
         assunto = "Confirme seu cadastro - Estoque Cars"
@@ -186,7 +191,7 @@ def editar_usuario(id_usuario):
                         """, (nome, telefone, email, cpf, id_usuario))
 
         if foto_perfil:
-            nome_imagem = f'{email}.jpg'
+            nome_imagem = f'{id_usuario}.jpg'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
 
@@ -516,7 +521,7 @@ def excluir_usuario(id_usuario):
         cur.execute("DELETE FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         con.commit()
 
-        nome_imagem = f'{email}.jpg'
+        nome_imagem = f'{id_usuario}.jpg'
         caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
         if os.path.exists(caminho_foto):
             os.remove(caminho_foto)
@@ -547,30 +552,29 @@ def logout():
 
 @app.route('/desbloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def desbloquear_usuario(id_bloqueado):
-    # Verificar se o token existe nos cookies
+    
     token = request.cookies.get('access_token')
     cur = con.cursor()
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
 
     try:
-        # Decodificar o token para saber quem está tentando desbloquear
+       
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
 
-        # Verificar no banco se esse id_adm realmente é um Administrador (tipo 2)
+        
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
         usuario_logado = cur.fetchone()
 
         if not usuario_logado or usuario_logado[0] != 2:
             return jsonify({'erro': 'Acesso restrito apenas para administradores.'}), 403
 
-        # Verifica se o usuário a ser desbloqueado existe
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_bloqueado,))
         if not cur.fetchone():
             return jsonify({'erro': 'Usuário alvo não encontrado.'}), 404
 
-        # Executa o desbloqueio (zera os erros e volta a situação para 0)
+
         cur.execute("UPDATE USUARIO SET SITUACAO = 0, ERRO = 0 WHERE ID_USUARIO = ?", (id_bloqueado,))
         con.commit()
 
