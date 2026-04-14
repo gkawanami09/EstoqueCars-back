@@ -1,10 +1,13 @@
 from main import app, con
 from flask import request, jsonify
+from validate_docbr import RENAVAM
 import jwt
 import os
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
+
+renavam_validacao = RENAVAM()
 
 
 @app.route('/cadastrar_carro', methods=['POST'])
@@ -39,8 +42,11 @@ def cadastrar_carro():
         renavam = request.form.get('renavam')
         foto_veiculo = request.files.get('foto_veiculo')
 
-        if not all([id_categoria,id_marca,modelo,ano_fabricacao,ano_modelo,preco,placa,renavam]):
+        if not all([id_categoria,id_marca,modelo,ano_fabricacao,ano_modelo,preco,placa,]):
             return jsonify({'erro':'Preencha todos os campos obrigatórios.'}),400
+        print('renavam')
+        if not renavam_validacao.validate(renavam):
+            return jsonify({'erro':'renavam INVALIDO'}),400
         if len(str(renavam)) != 11:
             return jsonify({'erro':'O RENAVAM deve conter 11 dígitos.'}), 400
 
@@ -319,7 +325,7 @@ def cadastrar_servico():
         if not nome_servico or not valor:
             return jsonify({'erro':'O nome do serviço e o valor são obrigatórios.'}),400
 
-        nome_servico = nome_servico.strip().upper()
+        nome_servico = nome_servico.strip()
 
         try:
             valor = float(valor.replace(',','.'))
@@ -340,3 +346,25 @@ def cadastrar_servico():
         return jsonify({'erro':f'Erro ao cadastrar: {e}'}), 500
     finally:
         cur.close()
+
+
+@app.route('/atualizar_servico/<int:id_servico>',methods=['PUT'])
+def atualizar_servico(id_servico):
+    cur = con.cursor()
+    try:
+        nome_servico = request.form.get('nome_servico')
+        valor = request.form.get('valor')
+        if not nome_servico or not valor:
+            return jsonify({'erro':'Porfavor adicione todos os cmapos'})
+
+        cur.execute("""UPDATE SERVICO SET NOME_SERVICO = ?, VALOR = ? 
+        WHERE ID_SERVICO = ? """,(nome_servico,valor,id_servico))
+        con.commit()
+
+        return jsonify({'messagem': f'Sucesso ao dar Erro ao atualizar o serviço '}), 201
+
+    except Exception as e:
+        return jsonify({'erro':f'Erro ao atualizar serviço {e}'}),500
+    finally:
+        cur.close()
+

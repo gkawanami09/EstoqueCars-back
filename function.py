@@ -8,6 +8,8 @@ import threading
 from flask import request, jsonify
 import threading, smtplib
 import jwt, datetime
+from validate_docbr import RENAVAM
+
 from main import app
 from flask_bcrypt import generate_password_hash, check_password_hash
 
@@ -136,3 +138,6 @@ def gerar_token(id_user):
     }
     token = jwt.encode(payload, senha_secreta, algorithm='HS256')
     return token
+# renavam_validacao = RENAVAM()
+# novo_renavam = renavam_validacao.generate()
+# print(novo_renavam)
