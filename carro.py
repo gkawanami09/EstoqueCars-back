@@ -170,11 +170,19 @@ def editar_carro(id_veiculo):
 @app.route('/cadastrar_marca', methods=['POST'])
 def cadastrar_marca():
     cur = con.cursor()
-
-
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
 
     try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
 
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
+        usuarios = cur.fetchone()
+
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
 
 
         marca = request.form.get('marca')
@@ -205,7 +213,19 @@ def cadastrar_marca():
 @app.route('/editar_marca/<int:id_marca>',methods=['PUT'])
 def editar_marca(id_marca):
     cur = con.cursor()
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
     try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
+
+        usuarios = cur.fetchone()
+
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+
         nova_marca = request.form.get('nova_marca')
         if not nova_marca:
             return jsonify({'erro':'o nome da marca e obrigatorio'}),400
@@ -221,16 +241,24 @@ def editar_marca(id_marca):
 @app.route('/deletar_marca/<int:id_marca>',methods=['DELETE'])
 def deletar_marca(id_marca):
     cur = con.cursor()
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
+
     try:
-      cur.execute('DELETE FROM MARCA WHERE ID_MARCA = ?', (id_marca,))
-      con.commit()
-      return jsonify({'mensagem':'Marca deletada com sucesso!'}), 200
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
+
+        usuarios = cur.fetchone()
+
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+        
+        cur.execute('DELETE FROM MARCA WHERE ID_MARCA = ?', (id_marca,))
+        con.commit()
+        return jsonify({'mensagem':'Marca deletada com sucesso!'}), 200
     except Exception as e:
         return jsonify({'erro':f'Erro ao deletar marca: {e}'}), 500
     finally:
         cur.close()
-
-
-
-
-#
