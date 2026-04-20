@@ -21,6 +21,7 @@ except Exception as e:
     print(f'Erro ao conectar: ',e)
 
 import carro
+import marca
 from view import *
 
 if __name__ == '__main__':
