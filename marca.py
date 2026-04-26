@@ -78,19 +78,14 @@ def editar_marca(id_marca):
 @app.route('/deletar_marca/<int:id_marca>',methods=['DELETE'])
 def deletar_marca(id_marca):
     cur = con.cursor()
-    token = request.cookies.get('access_token')
-    if not token:
-        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
+
 
     try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-        id_adm = payload['id_user']
-        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
 
-        usuarios = cur.fetchone()
 
-        if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+        cur.execute("""SELECT ID_VEICULO FROM VEICULO WHERE ID_VEICULO = ?""",(id_marca,))
+        if cur.fetchone():
+            return jsonify({'erro':'operacao bloaqueada'}),409
 
         cur.execute('DELETE FROM MARCA WHERE ID_MARCA = ?', (id_marca,))
         con.commit()
