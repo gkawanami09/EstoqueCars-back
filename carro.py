@@ -13,17 +13,10 @@ renavam_validacao = RENAVAM()
 @app.route('/cadastrar_carro', methods=['POST'])
 def cadastrar_carro():
     cur = con.cursor()
-    token = request.cookies.get('access_token')
-    if not token:
-        return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
+
 
     try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-        id_adm = payload['id_user']
-        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
-        usuarios = cur.fetchone()
-        if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+
 
         id_categoria = request.form.get('id_categoria')
         id_marca = request.form.get('id_marca')
@@ -94,19 +87,9 @@ def cadastrar_carro():
 @app.route('/editar_carro/<int:id_veiculo>', methods=['PUT'])
 def editar_carro(id_veiculo):
     cur = con.cursor()
-    token = request.cookies.get('access_token')
-    if not token:
-        return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
+
 
     try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-        id_adm = payload['id_user']
-
-        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
-        usuarios = cur.fetchone()
-        if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro': 'Acesso restrito. Apenas Administradores podem acessar.'}), 403
-
 
         cur.execute("SELECT ID_VEICULO FROM VEICULO WHERE ID_VEICULO = ?", (id_veiculo,))
         if not cur.fetchone():
@@ -173,46 +156,87 @@ def editar_carro(id_veiculo):
         return jsonify({'erro': f'Erro ao editar carro: {e}'}), 500
     finally:
         cur.close()
-@app.route('/excluir_carro/<id_veiculo>', methods=['DELETE'])
+@app.route('/excluir_carro/<int:id_veiculo>', methods=['DELETE'])
 def excluir_carro(id_veiculo):
     cur = con.cursor()
     try:
-        cur.execute("""DELETE FROM VEICULO WHERE ID_VEICULO = ?""", (id_veiculo,))
+        cur.execute("SELECT ID_MANUTENCAO FROM MANUTENCAO WHERE ID_VEICULO = ?", (id_veiculo,))
+        if cur.fetchone():
+            return jsonify({'erro': 'Operação bloqueada: Este veículo possui manutenções vinculadas.'}), 409
+
+        cur.execute("DELETE FROM VEICULO WHERE ID_VEICULO = ?", (id_veiculo,))
         con.commit()
 
         nome_imagem = f'veico_{id_veiculo}.png'
         caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
         if os.path.isfile(caminho_foto):
             os.remove(caminho_foto)
-            return jsonify({'mensagem': 'Carro excluido com sucesso!'}), 200
+
+        return jsonify({'mensagem': 'Carro excluído com sucesso!'}), 200
     except Exception as e:
-        con.rollback()
-        return jsonify({'erro': f'Erro ao excluir carro: {e}'}), 500
+        return jsonify({'erro': f'Erro ao excluir carro {e}'}), 500
     finally:
         cur.close()
+
 
 @app.route('/listar_carro', methods=['GET'])
 def listar_carro():
     cur = con.cursor()
+
+    marca = request.args.get('marca')
+    modelo = request.args.get('modelo')
+    ano = request.args.get('ano')
+
+    query = """
+            SELECT V.ID_VEICULO, \
+                   M.MARCA, \
+                   V.MODELO, \
+                   V.ANO_FABRICACAO, \
+                   V.ANO_MODELO, \
+                   V.PRECO, \
+                   V.PLACA, \
+                   V.COR
+            FROM VEICULO V
+                     INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA
+            WHERE 1 = 1 \
+            """
+    filtro = []
+
+    if marca:
+        query += ' AND M.MARCA LIKE ?'
+        filtro.append(f'%{marca}%')
+    if modelo:
+        query += ' AND V.MODELO LIKE ?'
+        filtro.append(f'%{modelo}%')
+    if ano:
+
+        query += ' AND V.ANO_FABRICACAO = ?'
+        filtro.append(ano)
+
     try:
-        cur.execute(
-            "SELECT V.ID_VEICULO, M.MARCA, V.MODELO, V.ANO_FABRICACAO, V.ANO_MODELO, V.PRECO, V.PLACA, V.COR FROM VEICULO V INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA")
+        cur.execute(query, tuple(filtro))
         carros = cur.fetchall()
 
-        lista_carros = []
-        for c in carros:
-            lista_carros.append({
-                'ID_VEICULO': c[0],
-                'MARCA': c[1],
-                'MODELO': c[2],
-                'ANO_FABRICACAO': c[3],
-                'ANO_MODELO': c[4],
-                'PRECO': c[5],
-                'PLACA': c[6],
-                'COR': c[7],
+        if not carros:
+            return jsonify({'mensagem': 'Nenhum carro foi encontrado!'}), 200
+
+        lista_carro = []
+        for carro in carros:
+            lista_carro.append({
+                'id_veiculo': carro[0],
+                'marca': carro[1],
+                'modelo': carro[2],
+                'ano_fabricacao': carro[3],
+                'ano_modelo': carro[4],
+                'preco': float(carro[5]),
+                'placa': carro[6],
+                'cor': carro[7],
             })
-            return jsonify({'carros': lista_carros}),200
+
+        return jsonify({'carro': lista_carro}), 200
+
     except Exception as e:
-        return jsonify({'erro':f'Erro ao ler carro: {e}'}), 500
+        return jsonify({'erro': f'Erro ao listar carros: {e}'}), 500
     finally:
         cur.close()
+
