@@ -1,6 +1,5 @@
-﻿from email.policy import EmailPolicy
-from tempfile import template
-from flask import Flask, jsonify, request, Response, make_response, render_template
+﻿
+from flask import Flask, jsonify, request, make_response, render_template
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import datetime
