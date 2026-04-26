@@ -69,10 +69,24 @@ def atualizar_historico_senhas(id_usuario, nova_senha, cur):
     return False
 
 #def validacao_renavam(renavam)
-   # if not renavam
+#    # if not renavam
+
+def recalcular_total_manutencao(id_manutencao, cur):
+    cur.execute("""SELECT VALOR_COBRADO, QUANTIDADE FROM ITEM_MANUTENCAO WHERE ID_MANUTENCAO = ?""",(id_manutencao,))
+
+    itens = cur.fetchall()
+
+    total = 0
+    for item in itens:
+        valor = float(item[0])
+        quantidade = int(item[1])
+        total += valor * quantidade
+
+    cur.execute("""UPDATE MANUTENCAO SET VALOR_TOTAL = ? WHERE ID_MANUTENCAO = ?""",(total, id_manutencao))
+    return total
+
 
 def verificar_senha(senha):
-
     if len(senha) < 10:
         return "A senha deve ter no mínimo 10 caracteres"
 
@@ -113,7 +127,7 @@ def enviando_email(destinatario, assunto, mensagem_html):
     msg['To'] = destinatario
 
     #o Attach ele significa Anexar ou colocar dentro
-    #O (MIMEText(mensagem_html  voce pega o html criado como MIMEText e vai ser coloca dentro do envelope principal para pode ficar bonito
+    #O (MIMEText(mensagem_html voce pega o html criado como MIMEText e vai ser coloca dentro do envelope principal para pode ficar bonito
     msg.attach(MIMEText(mensagem_html, 'html', 'utf-8'))
     try:
         contexto = ssl.create_default_context()
@@ -138,6 +152,8 @@ def gerar_token(id_user):
     }
     token = jwt.encode(payload, senha_secreta, algorithm='HS256')
     return token
+
+
 # renavam_validacao = RENAVAM()
 # novo_renavam = renavam_validacao.generate()
 # print(novo_renavam)
