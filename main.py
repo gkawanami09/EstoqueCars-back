@@ -22,6 +22,8 @@ except Exception as e:
 
 import carro
 import marca
+import servico
+import manutencao
 from view import *
 
 if __name__ == '__main__':
