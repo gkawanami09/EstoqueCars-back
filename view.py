@@ -30,9 +30,9 @@ def criar_usuario():
         if not email or not senha:
             return jsonify({'erro': 'Email e senha são obrigatórios.'}), 400
         if not cpf:
-            return jsonify({'erro': 'CPF é obrigatórios.'}), 400
+            return jsonify({'erro': 'CPF é obrigatório.'}), 400
         if not telefone:
-            return jsonify({'erro': 'Telefone é obrigatórios.'}), 400
+            return jsonify({'erro': 'Telefone é obrigatório.'}), 400
 
         erro_senha = verificar_senha(senha)
         if erro_senha:
@@ -428,9 +428,9 @@ def listar_usuario():
     except jwt.ExpiredSignatureError:
         return jsonify({"mensagem": "token expirado"}), 401
     except jwt.InvalidTokenError:
-        return jsonify({"mensagem": "token invalido"}), 401
+        return jsonify({"mensagem": "Token inválido"}), 401
     try:
-        cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE FROM USUARIO")
+        cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE, TIPO_USUARIO FROM USUARIO")
         usuarios = cur.fetchall()
 
         lista_usuarios = []
@@ -440,7 +440,8 @@ def listar_usuario():
                 'nome': u[1],
                 'email': u[2],
                 'telefone': u[4],
-                'cpf': u[3]
+                'cpf': u[3],
+                'tipo_usuario': u[5]
             })
         return jsonify(lista_usuarios), 200
     except Exception as e:
@@ -453,7 +454,7 @@ def listar_usuario():
 def buscar_usuario(nome):
     token = request.cookies.get('access_token')
     if not token:
-        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
+        return jsonify({'erro':'Acesso negado. Token não encontrado.'}),401
     cur = con.cursor()
     try:
 
@@ -462,7 +463,7 @@ def buscar_usuario(nome):
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
         usuarios = cur.fetchone()
         if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+            return jsonify({'erro': 'Acesso restrito. Apenas administradores podem acessar.'}), 403
 
 
         cur.execute(
@@ -488,7 +489,7 @@ def buscar_usuario(nome):
     except jwt.ExpiredSignatureError:
         return jsonify({'erro': 'Sessão expirada. Faça login novamente por gentileza.'}), 401
     except jwt.InvalidTokenError:
-        return jsonify({'erro': 'Token invalido'}), 401
+        return jsonify({'erro': 'Token inválido'}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao buscar usuário: {e}'}), 500
     finally:
@@ -506,10 +507,10 @@ def excluir_usuario(id_usuario):
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
         usuarios = cur.fetchone()
         if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro':'Acesso restrito. Apenas Administradores pode acessar'}), 403
+            return jsonify({'erro':'Acesso restrito. Apenas administradores podem acessar.'}), 403
 
         if id_adm == id_usuario:
-            return jsonify({'erro':'Operação não permitida você não pode exculir sua própria conta '}),403
+            return jsonify({'erro':'Operação não permitida. Você não pode excluir sua própria conta.'}),403
 
         cur.execute("SELECT EMAIL FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         usuario = cur.fetchone()
@@ -532,7 +533,7 @@ def excluir_usuario(id_usuario):
     except jwt.ExpiredSignatureError:
         return jsonify({'erro':'Sessão expirada. Faça login novamente por gentileza.'}), 401
     except jwt.InvalidTokenError:
-        return jsonify({'erro': 'Token invalido'}), 401
+        return jsonify({'erro': 'Token inválido'}), 401
     except Exception as e:
         return jsonify({'erro': f'Erro ao excluir usuário: {e}'}), 500
     finally:
@@ -633,5 +634,3 @@ def bloquear_usuario(id_bloqueado):
         return jsonify({'erro': f'Erro ao bloquear: {e}'}), 500
     finally:
         cur.close()
-
-

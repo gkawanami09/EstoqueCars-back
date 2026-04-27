@@ -7,8 +7,10 @@ import os
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-renavam_validacao = RENAVAM()
 
+renavam_validacao = RENAVAM()
+#novo_renavam = renavam_validacao.generate()
+#print(novo_renavam)
 
 @app.route('/cadastrar_carro', methods=['POST'])
 def cadastrar_carro():
@@ -39,7 +41,7 @@ def cadastrar_carro():
             return jsonify({'erro':'Preencha todos os campos obrigatórios.'}),400
         print('renavam')
         if not renavam_validacao.validate(renavam):
-            return jsonify({'erro':'renavam INVALIDO'}),400
+            return jsonify({'erro':'RENAVAM inválido'}),400
         if len(str(renavam)) != 11:
             return jsonify({'erro':'O RENAVAM deve conter 11 dígitos.'}), 400
 
@@ -115,7 +117,7 @@ def editar_carro(id_veiculo):
         if not all([id_categoria,id_marca,modelo,ano_fabricacao,ano_modelo,preco,placa,renavam]):
             return jsonify({'erro':'Preencha todos os campos obrigatórios.'}),400
         if not renavam_validacao.validate(renavam):
-            return jsonify({'erro': 'Renavam INVALIDO'}), 400
+            return jsonify({'erro': 'RENAVAM inválido'}), 400
         if len(str(renavam)) != 11:
             return jsonify({'erro':'O RENAVAM deve conter 11 dígitos.'}), 400
 
@@ -239,4 +241,3 @@ def listar_carro():
         return jsonify({'erro': f'Erro ao listar carros: {e}'}), 500
     finally:
         cur.close()
-

@@ -28,10 +28,9 @@ def cadastrar_manutencao():
             if data_manutencao < agora:
                 return jsonify({'erro':'Por acaso a humanidade criou uma máquina do tempo para voltar para o passado?'}), 400
             if data_manutencao > limite_data:
-                return jsonify({'erro':'data muito distante o agendamentio premitido e no maximo um ano '})
+                return jsonify({'erro':'Data muito distante, o agendamento permitido é no máximo um ano.'})
         except ValueError:
-            return jsonify({
-                               'erro': 'Formato de data inválido. Use o formato certo (DD/MM/YYYY HH:MM), a gente não tá nos Estados Unidos.'}), 400
+            return jsonify({ 'erro': 'Formato de data inválido. Use o formato (DD/MM/YYYY HH:MM).'}), 400
         cur.execute("SELECT ID_VEICULO FROM VEICULO WHERE ID_VEICULO = ?", (id_veiculo,))
         if not cur.fetchone():
             return jsonify({'erro': 'Veículo não encontrado.'}), 404
@@ -65,7 +64,7 @@ def cadastrar_manutencao():
         }), 201
 
     except Exception as e:
-        return jsonify({'erro': f'Erro au cadastrar_manutencao{e}'}), 500
+        return jsonify({'erro': f'Erro ao cadastrar manutenção: {e}'}), 500
     finally:
         cur.close()
 
@@ -75,7 +74,7 @@ def editar_manutencao(id_manutencao):
     try:
         dados = request.get_json()
         if not dados:
-            return jsonify({'erro':'envie os dados em json'}), 400
+            return jsonify({'erro':'Envie os dados em json'}), 400
         id_veiculo = dados.get('id_veiculo')
         data_manutencao = dados.get('data_manutencao')
         servico = dados.get('servico')
@@ -87,25 +86,25 @@ def editar_manutencao(id_manutencao):
         manutencao = cur.fetchone()
 
         if not manutencao:
-            return jsonify({'erro':'manutencao nso encontrado'}), 404
+            return jsonify({'erro':'Manutenção não encontrada'}), 404
 
         data_antiga = manutencao[0]
         agora = datetime.datetime.now()
 
         if data_antiga < agora:
-            return jsonify({'erro':''}), 403
+            return jsonify({'erro':'Não é possível editar uma manutenção que já ocorreu.'}), 403
 
         try:
             data_nova = datetime.datetime.strptime(dados['data_nova'], '%d/%m/%Y  %H:%M')
             limite_futuro = agora + datetime.timedelta(days=365)
 
             if data_nova < agora:
-                return jsonify({'erro':''}), 400
+                return jsonify({'erro':'A nova data não pode ser no passado.'}), 400
 
             if data_nova > limite_futuro:
-                return jsonify({'erro':''}), 400
+                return jsonify({'erro':'A nova data não pode ser mais de um ano no futuro.'}), 400
         except ValueError:
-            return jsonify({'erro':''}), 400
+            return jsonify({'erro':'Formato de data inválido. Use DD/MM/YYYY HH:MM.'}), 400
 
         cur.execute("""UPDATE MANUTENCAO SET ID_VEICULO = ?, SERVICO = ? WHERE ID_MANUTENCAO = ?""",(id_veiculo,data_nova, id_manutencao))
 
@@ -143,7 +142,7 @@ def editar_manutencao(id_manutencao):
             'novo_valor_total': valor_total_calculado
         }), 200
     except Exception as e:
-        return {'erro': f'Erro ao editar a manutencao{e}'}, 500
+        return {'erro': f'Erro ao editar a manutenção: {e}'}, 500
     finally:
         cur.close()
 
@@ -155,17 +154,17 @@ def deletar_manutencao(id_manutencao):
         manutecao = cur.fetchone()
 
         if not manutecao:
-            return  jsonify({'erro':'nao foi possivel entrontar a Manutecao'}), 404
+            return  jsonify({'erro':'Não foi possível encontrar a manutenção'}), 404
         data_agendada = manutecao[0]
         agora = datetime.datetime.now()
 
         if data_agendada < agora:
-            return jsonify({'erro':'nao e possivel excluir o historico de uma manutencao que ja aconteceu.'}) , 403
+            return jsonify({'erro':'Não é possível excluir o histórico de uma manutenção que já aconteceu.'}) , 403
 
         cur.execute("""DELETE FROM MANUTENCAO WHERE ID_MANUTENCAO = ?""",(id_manutencao,)),
         con.commit()
 
-        return jsonify({'messagem':'agendamento de manutenção cancelado e excluído com sucesso!'}), 201
+        return jsonify({'mensagem':'Agendamento de manutenção cancelado e excluído com sucesso!'}), 201
     except Exception as e:
         return jsonify({'erro':f'Erro ao deletar a manutencao {e}'}), 500
     finally:
@@ -271,7 +270,7 @@ def listar_manutencao():
         manutencoes = cur.fetchall()
 
         if not manutencoes:
-            return jsonify({'messagem':'Nenhuma manutencao encontrada.'}), 404
+            return jsonify({'mensagem':'Nenhuma manutenção encontrada.'}), 404
 
 
         lista_final = []
@@ -324,7 +323,7 @@ def adicionar_item_manutencao():
         quantidade = dados.get('quantidade')
 
         if not id_manutencao and not id_servico:
-            return jsonify({'erro':'compo obrigatorio'}), 400
+            return jsonify({'erro':'Campo obrigatório'}), 400
 
         quantidade = int(quantidade)
 
@@ -334,16 +333,16 @@ def adicionar_item_manutencao():
         manutencao = cur.fetchone()
 
         if not manutencao:
-            return jsonify({'erro':'manutencao nao encontrada'}), 400
+            return jsonify({'erro':'Manutenção não encontrada'}), 400
 
         if manutencao[0] < datetime.datetime.now():
-            return jsonify({'erro':'Não pode altera a manutencao no passado'}), 400
+            return jsonify({'erro':'Não é possível alterar uma manutenção no passado'}), 400
 
         cur.execute("""SELECT VALOR FROM SERVICO WHERE ID_SERVICO = ?""",(id_servico,)),
         servico = cur.fetchone()
 
         if not servico:
-            return jsonify({'erro':'servico nao encontrado'}), 400
+            return jsonify({'erro':'Serviço não encontrado'}), 400
 
         valor = float(servico[0])
 
@@ -365,7 +364,7 @@ def adicionar_item_manutencao():
                         'novo_total':novo_total}), 201
 
     except Exception as e:
-        return jsonify({'erro':f'Erro ao adicionar a manutencao {e}'}), 500
+        return jsonify({'erro':f'Erro ao adicionar item na manutenção: {e}'}), 500
     finally:
         cur.close()
 
@@ -529,5 +528,38 @@ def listar_item_manutencao(id_manutencao):
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao listar item manutencao {e}'}), 500
+    finally:
+        cur.close()
+
+
+@app.route('/historico_servico/<int:id_servico>', methods=['GET'])
+def listar_historico_servico(id_servico):
+    cur = con.cursor()
+    try:
+        cur.execute("""
+            SELECT S.NOME_SERVICO, H.VALOR_UNITARIO, H.DATA_HISTORICO 
+            FROM HISTORICO_SERVICO H
+            INNER JOIN SERVICO S ON H.ID_SERVICO = S.ID_SERVICO
+            WHERE H.ID_SERVICO = ?
+            ORDER BY H.DATA_HISTORICO DESC
+        """, (id_servico,))
+
+        historico = cur.fetchall()
+
+        if not historico:
+            return jsonify({'mensagem': 'Nenhum histórico encontrado para este serviço.'}), 404
+
+        lista_h = []
+        for registro in historico:
+            lista_h.append({
+                'servico': registro[0],
+                'valor_antigo': float(registro[1]),
+                'data_alteracao': registro[2].strftime('%d/%m/%Y %H:%M')
+            })
+
+        return jsonify({'id_servico': id_servico, 'historico': lista_h}), 200
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao buscar histórico: {e}'}), 500
     finally:
         cur.close()

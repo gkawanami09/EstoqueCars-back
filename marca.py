@@ -9,7 +9,7 @@ def cadastrar_marca():
     cur = con.cursor()
     token = request.cookies.get('access_token')
     if not token:
-        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
+        return jsonify({'erro':'Acesso negado. Token não encontrado.'}),401
 
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
@@ -19,7 +19,7 @@ def cadastrar_marca():
         usuarios = cur.fetchone()
 
         if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+            return jsonify({'erro': 'Acesso restrito. Apenas administradores podem acessar.'}), 403
 
 
         marca = request.form.get('marca')
@@ -52,7 +52,7 @@ def editar_marca(id_marca):
     cur = con.cursor()
     token = request.cookies.get('access_token')
     if not token:
-        return jsonify({'erro':'Acesso negado. Token não econtrado.'}),401
+        return jsonify({'erro':'Acesso negado. Token não encontrado.'}),401
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
@@ -61,11 +61,11 @@ def editar_marca(id_marca):
         usuarios = cur.fetchone()
 
         if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro': 'Acesso restrito. Apenas Administradores pode acessar'}), 403
+            return jsonify({'erro': 'Acesso restrito. Apenas administradores podem acessar.'}), 403
 
         nova_marca = request.form.get('nova_marca')
         if not nova_marca:
-            return jsonify({'erro':'o nome da marca e obrigatorio'}),400
+            return jsonify({'erro':'O nome da marca é obrigatório.'}),400
         cur.execute("UPDATE MARCA SET MARCA = ? WHERE ID_MARCA = ?",(nova_marca.strip().upper(),id_marca))
         con.commit()
 
@@ -85,7 +85,7 @@ def deletar_marca(id_marca):
 
         cur.execute("""SELECT ID_VEICULO FROM VEICULO WHERE ID_VEICULO = ?""",(id_marca,))
         if cur.fetchone():
-            return jsonify({'erro':'operacao bloaqueada'}),409
+            return jsonify({'erro':'Operação bloqueada'}),409
 
         cur.execute('DELETE FROM MARCA WHERE ID_MARCA = ?', (id_marca,))
         con.commit()
@@ -118,7 +118,7 @@ def buscar_marca():
                 'nome': marca[1],
             })
         if not listar_marcas:
-            return jsonify({'erro':'Nehuma marca encontrafa co  esse filtro'}), 404
+            return jsonify({'erro':'Nenhuma marca encontrada com esse filtro.'}), 404
 
         return jsonify({'marca': listar_marcas}), 200
     except Exception as e:
