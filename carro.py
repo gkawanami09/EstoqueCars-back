@@ -185,59 +185,62 @@ def excluir_carro(id_veiculo):
 def listar_carro():
     cur = con.cursor()
 
+    categoria = request.args.get('categoria')
     marca = request.args.get('marca')
     modelo = request.args.get('modelo')
     ano = request.args.get('ano')
 
     query = """
-            SELECT V.ID_VEICULO, \
-                   M.MARCA, \
-                   V.MODELO, \
-                   V.ANO_FABRICACAO, \
-                   V.ANO_MODELO, \
-                   V.PRECO, \
-                   V.PLACA, \
-                   V.COR
-            FROM VEICULO V
-                     INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA
-            WHERE 1 = 1 \
-            """
-    filtro = []
+        SELECT
+            V.ID_VEICULO,
+            M.MARCA,
+            V.MODELO,
+            V.ANO_MODELO,
+            V.COR,
+            V.CAMBIO,
+            V.PRECO,
+            C.NOME_CATEGORIA
+        FROM VEICULO V
+        INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA
+        INNER JOIN CATEGORIA C ON V.ID_CATEGORIA = C.ID_CATEGORIA
+        WHERE 1=1
+    """
+    filtros = []
 
+    if categoria:
+        query += " AND UPPER(C.NOME_CATEGORIA) = UPPER(?)"
+        filtros.append(categoria)
     if marca:
-        query += ' AND M.MARCA LIKE ?'
-        filtro.append(f'%{marca}%')
+        query += " AND M.MARCA LIKE ?"
+        filtros.append(f"%{marca}%")
     if modelo:
-        query += ' AND V.MODELO LIKE ?'
-        filtro.append(f'%{modelo}%')
+        query += " AND V.MODELO LIKE ?"
+        filtros.append(f"%{modelo}%")
     if ano:
-
-        query += ' AND V.ANO_FABRICACAO = ?'
-        filtro.append(ano)
+        query += " AND V.ANO_FABRICACAO = ?"
+        filtros.append(ano)
 
     try:
-        cur.execute(query, tuple(filtro))
-        carros = cur.fetchall()
+        cur.execute(query, tuple(filtros))
+        rows = cur.fetchall()
 
-        if not carros:
-            return jsonify({'mensagem': 'Nenhum carro foi encontrado!'}), 200
-
-        lista_carro = []
-        for carro in carros:
-            lista_carro.append({
-                'id_veiculo': carro[0],
-                'marca': carro[1],
-                'modelo': carro[2],
-                'ano_fabricacao': carro[3],
-                'ano_modelo': carro[4],
-                'preco': float(carro[5]),
-                'placa': carro[6],
-                'cor': carro[7],
+        carros = []
+        for r in rows:
+            id_veiculo = r[0]
+            carros.append({
+                "id": id_veiculo,
+                "nome": f"{r[1]} {r[2]}",
+                "modelo": r[2],
+                "cor": r[4],
+                "cambio": r[5],
+                "preco": float(r[6]),
+                "categoria": r[7],
+                "imagem": f"/uploads/veico_{id_veiculo}.png"
             })
 
-        return jsonify({'carro': lista_carro}), 200
+        return jsonify({"carros": carros}), 200
 
     except Exception as e:
-        return jsonify({'erro': f'Erro ao listar carros: {e}'}), 500
+        return jsonify({"erro": f"Erro ao listar carros: {e}"}), 500
     finally:
         cur.close()
