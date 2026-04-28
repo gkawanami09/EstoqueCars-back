@@ -148,7 +148,7 @@ def gerar_token(id_user):
     payload = {
         'id_user' : id_user,
         'timestamp' : datetime.datetime.utcnow().isoformat(),
-        'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+        'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=60)
     }
     token = jwt.encode(payload, senha_secreta, algorithm='HS256')
     return token

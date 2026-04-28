@@ -1,5 +1,5 @@
 from main import app, con
-from flask import request, jsonify
+from flask import request, jsonify, send_from_directory
 from validate_docbr import RENAVAM
 import jwt
 import os
@@ -193,13 +193,23 @@ def listar_carro():
     query = """
         SELECT
             V.ID_VEICULO,
+            V.ID_CATEGORIA,
+            V.ID_MARCA,
             M.MARCA,
             V.MODELO,
+            V.ANO_FABRICACAO,
             V.ANO_MODELO,
+            V.QUILOMETRAGEM,
             V.COR,
             V.CAMBIO,
             V.PRECO,
-            C.NOME_CATEGORIA
+            V.DESCRICAO,
+            V.ESTADO_CONSERVACAO,
+            V.STATUS_DOCUMENTO,
+            V.STATUS_ESTOQUE,
+            V.PLACA,
+            V.RENAVAM,
+            C.NOME
         FROM VEICULO V
         INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA
         INNER JOIN CATEGORIA C ON V.ID_CATEGORIA = C.ID_CATEGORIA
@@ -208,7 +218,7 @@ def listar_carro():
     filtros = []
 
     if categoria:
-        query += " AND UPPER(C.NOME_CATEGORIA) = UPPER(?)"
+        query += " AND UPPER(C.NOME) = UPPER(?)"
         filtros.append(categoria)
     if marca:
         query += " AND M.MARCA LIKE ?"
@@ -229,12 +239,24 @@ def listar_carro():
             id_veiculo = r[0]
             carros.append({
                 "id": id_veiculo,
-                "nome": f"{r[1]} {r[2]}",
-                "modelo": r[2],
-                "cor": r[4],
-                "cambio": r[5],
-                "preco": float(r[6]),
-                "categoria": r[7],
+                "id_categoria": r[1],
+                "id_marca": r[2],
+                "marca": r[3],
+                "nome": f"{r[3]} {r[4]}",
+                "modelo": r[4],
+                "ano_fabricacao": r[5],
+                "ano_modelo": r[6],
+                "quilometragem": r[7],
+                "cor": r[8],
+                "cambio": r[9],
+                "preco": float(r[10]),
+                "descricao": r[11],
+                "estado_conservacao": r[12],
+                "status_documento": r[13],
+                "status_estoque": r[14],
+                "placa": r[15],
+                "renavam": r[16],
+                "categoria": r[17],
                 "imagem": f"/uploads/veico_{id_veiculo}.png"
             })
 
@@ -242,5 +264,48 @@ def listar_carro():
 
     except Exception as e:
         return jsonify({"erro": f"Erro ao listar carros: {e}"}), 500
+    finally:
+        cur.close()
+@app.route('/uploads/<path:nome_arquivo>')
+def uploads(nome_arquivo):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], nome_arquivo)
+
+
+@app.route('/buscar_categoria', methods=['POST'])
+def buscar_categoria():
+    cur = con.cursor()
+    try:
+        nome = request.form.get('nome')
+        id_categoria = request.form.get('id_categoria')
+        categorias = []
+
+        if nome:
+            nome_formatado = nome.strip().upper()
+            cur.execute(
+                "SELECT ID_CATEGORIA, NOME FROM CATEGORIA WHERE UPPER(NOME) LIKE ?",
+                (f"%{nome_formatado}%",)
+            )
+        elif id_categoria:
+            cur.execute(
+                "SELECT ID_CATEGORIA, NOME FROM CATEGORIA WHERE ID_CATEGORIA = ?",
+                (id_categoria,)
+            )
+        else:
+            cur.execute("SELECT ID_CATEGORIA, NOME FROM CATEGORIA")
+
+        rows = cur.fetchall()
+
+        for categoria in rows:
+            categorias.append({
+                "id_categoria": categoria[0],
+                "nome": categoria[1],
+            })
+
+        if not categorias:
+            return jsonify({"erro": "Nenhuma categoria encontrada com esse filtro."}), 404
+
+        return jsonify({"categoria": categorias}), 200
+    except Exception as e:
+        return jsonify({"erro": f"Erro ao buscar categoria: {e}"}), 500
     finally:
         cur.close()

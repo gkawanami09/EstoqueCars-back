@@ -249,7 +249,17 @@ def login():
             con.commit()
             token = gerar_token(id_usuario)
 
-            resp = make_response(jsonify({'nome': nome ,'mensagem': 'Logado com sucesso!'}), 200)
+            resp = make_response(jsonify({
+                'nome': nome,
+                'tipo_usuario': tipo,
+                'mensagem': 'Logado com sucesso!'
+            }), 200)
+            resp = make_response(jsonify({
+                'nome': nome,
+                'tipo_usuario': tipo,
+                'mensagem': 'Logado com sucesso!'
+            }), 200)
+
             resp.set_cookie(
                 'access_token', token,
                 httponly=True,
@@ -418,17 +428,11 @@ def recuperar_senha():
 
 @app.route('/listar_usuario', methods=['GET'])
 def listar_usuario():
-    token = request.cookies.get('access_token')
-    cur = con.cursor()
-    if not token:
-        return jsonify({"mensagem": "token de autenticação necessária"}), 401
 
-    try:
-        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-    except jwt.ExpiredSignatureError:
-        return jsonify({"mensagem": "token expirado"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"mensagem": "Token inválido"}), 401
+    cur = con.cursor()
+
+
+
     try:
         cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE, TIPO_USUARIO FROM USUARIO")
         usuarios = cur.fetchall()

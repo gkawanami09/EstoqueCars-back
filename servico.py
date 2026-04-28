@@ -1,13 +1,23 @@
 from main import app,con
 from flask import jsonify,request
+import jwt
 
 
 
 @app.route('/cadastrar_servico', methods=['POST'])
 def cadastrar_servico():
     cur = con.cursor()
+    token = request.cookies.get('access_token')
+    if not token:
+        return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
     try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        id_adm = payload['id_user']
+        cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
+        usuarios = cur.fetchone()
 
+        if not usuarios or usuarios[0] != 2:
+            return jsonify({'erro': 'Acesso restrito. Apenas administradores podem acessar.'}), 403
         nome_servico = request.form.get('nome_servico')
         valor = request.form.get('valor')
 
