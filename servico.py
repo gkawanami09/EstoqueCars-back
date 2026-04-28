@@ -9,6 +9,11 @@ def cadastrar_servico():
     cur = con.cursor()
     token = request.cookies.get('access_token')
     if not token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+
+    if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
@@ -34,13 +39,17 @@ def cadastrar_servico():
             return jsonify({'erro':'Valor inválido. Digite apenas números.'}),400
         cur.execute("""SELECT ID_SERVICO FROM SERVICO WHERE LOWER(NOME_SERVICO)= LOWER(?)""", (nome_servico,))
         if cur.fetchone():
-            return jsonify({'erro':'Serviço já cadastrado'})
+            return jsonify({'erro':'Serviço já cadastrado'}), 409
 
         cur.execute("INSERT INTO SERVICO (NOME_SERVICO, VALOR) VALUES (?, ?)", (nome_servico, valor))
         con.commit()
 
         return jsonify({'mensagem':'Serviço cadastrado com sucesso!'}), 201
-
+    
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente por gentileza.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token inválido'}), 401
     except Exception as e:
         return jsonify({'erro':f'Erro ao cadastrar: {e}'}), 500
     finally:

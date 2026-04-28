@@ -210,8 +210,8 @@ def editar_usuario(id_usuario):
 def login():
     cur = con.cursor()
     try:
-        dados = request.get_json()
-        email = dados.get('email')
+        dados = request.get_json(silent=True) or {}
+        email = str(dados.get('email') or '').strip()
         senha = dados.get('senha')
 
         if not email or not senha:
@@ -220,7 +220,7 @@ def login():
         cur.execute(
             """SELECT ID_USUARIO, NOME, SENHA_HASH, SITUACAO, ERRO, TIPO_USUARIO
                FROM USUARIO
-               WHERE EMAIL = ?""",
+               WHERE LOWER(EMAIL) = LOWER(?)""",
             (email,))
         usuario = cur.fetchone()
 
@@ -252,11 +252,7 @@ def login():
             resp = make_response(jsonify({
                 'nome': nome,
                 'tipo_usuario': tipo,
-                'mensagem': 'Logado com sucesso!'
-            }), 200)
-            resp = make_response(jsonify({
-                'nome': nome,
-                'tipo_usuario': tipo,
+                'token': token,
                 'mensagem': 'Logado com sucesso!'
             }), 200)
 
@@ -266,7 +262,7 @@ def login():
                 secure=False,
                 samesite="Lax",
                 path="/",
-                max_age=600
+                max_age=3600
             )
             return resp
         else:
@@ -292,6 +288,7 @@ def login():
                 return jsonify({'erro': 'Usuário bloqueado por excesso de tentativas. Entre em contato com o suporte para desbloquear sua conta.'}), 401
 
             return jsonify({'erro': 'Email ou Senha está incorreta'}), 401
+    
     except Exception as e:
         return jsonify({'erro': f'Erro ao login: {e}'}), 500
     finally:
