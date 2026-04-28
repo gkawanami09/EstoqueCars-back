@@ -557,6 +557,11 @@ def logout():
 def desbloquear_usuario(id_bloqueado):
     
     token = request.cookies.get('access_token')
+    if not token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+
     cur = con.cursor()
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
@@ -597,6 +602,11 @@ def desbloquear_usuario(id_bloqueado):
 @app.route('/bloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def bloquear_usuario(id_bloqueado):
     token = request.cookies.get('access_token')
+    if not token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+
     cur = con.cursor()
 
     if not token:
