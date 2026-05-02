@@ -1,4 +1,3 @@
-﻿
 from flask import Flask, jsonify, request, make_response, render_template
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
@@ -23,8 +22,6 @@ def criar_usuario():
         cpf = request.form.get('cpf')
         foto_perfil = request.files.get('foto_perfil')
 
-
-
         if not nome or nome.split() == None:
             return jsonify({'erro': 'Nome é obrigatório.'}), 400
         if not email or not senha:
@@ -44,7 +41,7 @@ def criar_usuario():
                     WHERE EMAIL = ?
                        OR CPF = ?
                        OR TELEFONE = ?
-                    """, (email,  cpf, telefone))
+                    """, (email, cpf, telefone))
 
         conflito = cur.fetchone()
         if conflito:
@@ -58,26 +55,22 @@ def criar_usuario():
         senha_hash = generate_password_hash(senha)
         codigo_ativacao = gerar_codigo()
 
-
-        cur.execute("""INSERT INTO USUARIO (NOME, 
+        cur.execute("""INSERT INTO USUARIO (NOME,
                                             EMAIL,
                                             TELEFONE,
-                                            SENHA_HASH, 
-                                            CPF, SITUACAO, 
+                                            SENHA_HASH,
+                                            CPF, SITUACAO,
                                             CODIGO_ATIVACAO)
                        VALUES (?, ?, ?, ?, ?, 2, ?)""",
                     (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao))
 
-       
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
         id_usuario = cur.fetchone()[0]
 
         if foto_perfil:
-            nome_imagem = f'{id_usuario}.pgn'
+            nome_imagem = f'foto_perfil{id_usuario}.pgn'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
-
-
 
         con.commit()
 
@@ -142,11 +135,11 @@ def editar_usuario(id_usuario):
         foto_perfil = request.files.get('foto_perfil')
 
         cur.execute("""
-                    SELECT EMAIL,  CPF, TELEFONE
+                    SELECT EMAIL, CPF, TELEFONE
                     FROM USUARIO
                     WHERE (EMAIL = ? OR CPF = ? OR TELEFONE = ?)
                       AND ID_USUARIO != ?
-                    """, (email,  cpf, telefone, id_usuario))
+                    """, (email, cpf, telefone, id_usuario))
 
         conflito = cur.fetchone()
         if conflito:
@@ -161,13 +154,9 @@ def editar_usuario(id_usuario):
             erro_senha = verificar_senha(senha)
             if erro_senha:
                 return jsonify({'erro': erro_senha}), 400
-            
-            
 
             if atualizar_historico_senhas(id_usuario, senha, cur):
                 return jsonify({'erro': 'Você não pode reutilizar suas últimas 3 senhas.'}), 400
-            
-
 
             senha_hash = generate_password_hash(senha)
 
@@ -285,10 +274,11 @@ def login():
                     (id_usuario,)
                 )
                 con.commit()
-                return jsonify({'erro': 'Usuário bloqueado por excesso de tentativas. Entre em contato com o suporte para desbloquear sua conta.'}), 401
+                return jsonify({
+                                   'erro': 'Usuário bloqueado por excesso de tentativas. Entre em contato com o suporte para desbloquear sua conta.'}), 401
 
             return jsonify({'erro': 'Email ou Senha está incorreta'}), 401
-    
+
     except Exception as e:
         return jsonify({'erro': f'Erro ao login: {e}'}), 500
     finally:
@@ -333,10 +323,10 @@ def codigo_verificacao():
         nome = usuario[1]
         situacao = usuario[2]
 
-        
         if situacao == 1:
-            return jsonify({'erro':'Usuario bloqueado. Entre em contato com o suporte para desbloquear sua conta.'}), 404
-        
+            return jsonify(
+                {'erro': 'Usuario bloqueado. Entre em contato com o suporte para desbloquear sua conta.'}), 404
+
         codigo = gerar_codigo()
 
         cur.execute("INSERT INTO RECUPERAR_SENHA (ID_USUARIO, CODIGO) VALUES (?, ?)", (id_usuario, codigo))
@@ -380,8 +370,8 @@ def recuperar_senha():
                     SELECT ID_RECUPERA
                     FROM RECUPERAR_SENHA
                     WHERE ID_USUARIO = ?
-                    AND CODIGO = ?
-                    AND USADO_EM IS NULL
+                      AND CODIGO = ?
+                      AND USADO_EM IS NULL
                     """, (id_usuario, codigo))
 
         recuperacao = cur.fetchone()
@@ -392,7 +382,7 @@ def recuperar_senha():
         id_recupera = recuperacao[0]
 
         if not nova_senha:
-            return jsonify({'mensagem':'Código válido', "valido": True}), 200
+            return jsonify({'mensagem': 'Código válido', "valido": True}), 200
 
         erro_senha = verificar_senha(nova_senha)
 
@@ -416,19 +406,17 @@ def recuperar_senha():
         )
 
         con.commit()
-        return jsonify({'mensagem': 'Senha redefinida com sucesso!', "validade" : False}), 200
+        return jsonify({'mensagem': 'Senha redefinida com sucesso!', "validade": False}), 200
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao redefinir senha: {e}'}), 500
     finally:
         cur.close()
 
+
 @app.route('/listar_usuario', methods=['GET'])
 def listar_usuario():
-
     cur = con.cursor()
-
-
 
     try:
         cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE, TIPO_USUARIO FROM USUARIO")
@@ -455,7 +443,7 @@ def listar_usuario():
 def buscar_usuario(nome):
     token = request.cookies.get('access_token')
     if not token:
-        return jsonify({'erro':'Acesso negado. Token não encontrado.'}),401
+        return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
     cur = con.cursor()
     try:
 
@@ -465,7 +453,6 @@ def buscar_usuario(nome):
         usuarios = cur.fetchone()
         if not usuarios or usuarios[0] != 2:
             return jsonify({'erro': 'Acesso restrito. Apenas administradores podem acessar.'}), 403
-
 
         cur.execute(
             "SELECT NOME, EMAIL, CPF, TELEFONE FROM USUARIO WHERE LOWER(NOME) LIKE LOWER(?)",
@@ -496,6 +483,7 @@ def buscar_usuario(nome):
     finally:
         cur.close()
 
+
 @app.route('/excluir_usuario/<int:id_usuario>', methods=['DELETE'])
 def excluir_usuario(id_usuario):
     token = request.cookies.get('access_token')
@@ -508,10 +496,10 @@ def excluir_usuario(id_usuario):
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO= ?", (id_adm,))
         usuarios = cur.fetchone()
         if not usuarios or usuarios[0] != 2:
-            return jsonify({'erro':'Acesso restrito. Apenas administradores podem acessar.'}), 403
+            return jsonify({'erro': 'Acesso restrito. Apenas administradores podem acessar.'}), 403
 
         if id_adm == id_usuario:
-            return jsonify({'erro':'Operação não permitida. Você não pode excluir sua própria conta.'}),403
+            return jsonify({'erro': 'Operação não permitida. Você não pode excluir sua própria conta.'}), 403
 
         cur.execute("SELECT EMAIL FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
         usuario = cur.fetchone()
@@ -532,7 +520,7 @@ def excluir_usuario(id_usuario):
         return jsonify({'mensagem': 'Usuário removido com sucesso'}), 200
 
     except jwt.ExpiredSignatureError:
-        return jsonify({'erro':'Sessão expirada. Faça login novamente por gentileza.'}), 401
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente por gentileza.'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'erro': 'Token inválido'}), 401
     except Exception as e:
@@ -555,33 +543,27 @@ def logout():
 
 @app.route('/desbloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def desbloquear_usuario(id_bloqueado):
-    
     token = request.cookies.get('access_token')
     if not token:
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.lower().startswith('bearer '):
-            token = auth_header.split(' ', 1)[1].strip()
-
-    cur = con.cursor()
-    if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
+    cur = con.cursor()
+
 
     try:
-       
+
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']
-
-        
         cur.execute("SELECT TIPO_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_adm,))
         usuario_logado = cur.fetchone()
 
         if not usuario_logado or usuario_logado[0] != 2:
             return jsonify({'erro': 'Acesso restrito apenas para administradores.'}), 403
 
+
+
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_bloqueado,))
         if not cur.fetchone():
             return jsonify({'erro': 'Usuário alvo não encontrado.'}), 404
-
 
         cur.execute("UPDATE USUARIO SET SITUACAO = 0, ERRO = 0 WHERE ID_USUARIO = ?", (id_bloqueado,))
         con.commit()
@@ -603,15 +585,9 @@ def desbloquear_usuario(id_bloqueado):
 def bloquear_usuario(id_bloqueado):
     token = request.cookies.get('access_token')
     if not token:
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.lower().startswith('bearer '):
-            token = auth_header.split(' ', 1)[1].strip()
+        return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
 
     cur = con.cursor()
-
-    if not token:
-        return jsonify({'erro': 'Acesso negado. Token inválido.'}), 401
-
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         id_adm = payload['id_user']

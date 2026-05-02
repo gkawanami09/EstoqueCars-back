@@ -4,11 +4,13 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import threading
 from flask import request, jsonify
 import threading, smtplib
 import jwt, datetime
+from main import con
 from validate_docbr import RENAVAM
+from functools import wraps
+# Importa o wraps, que serve para não deixar a função perder o nome original
 
 from main import app
 from flask_bcrypt import generate_password_hash, check_password_hash
@@ -114,7 +116,6 @@ def verificar_senha(senha):
     return None
 
 
-
 def enviando_email(destinatario, assunto, mensagem_html):
     user = 'estoquecars@gmail.com'
     senha = 'sozzflywdrfxxntv'
@@ -148,7 +149,7 @@ def gerar_token(id_user):
     payload = {
         'id_user' : id_user,
         'timestamp' : datetime.datetime.utcnow().isoformat(),
-        'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=20)
+        'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=5000)
     }
     token = jwt.encode(payload, senha_secreta, algorithm='HS256')
     return token
