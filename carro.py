@@ -3,6 +3,7 @@ from flask import request, jsonify, send_from_directory  # Importa recursos para
 from validate_docbr import RENAVAM  # Importa o validador de RENAVAM.
 import jwt  # Importa a biblioteca usada para tratar erros de token JWT.
 import os  # Importa recursos para lidar com pastas e arquivos.
+import datetime
 
 
 # Verifica se a pasta de upload ainda nao existe.
@@ -361,22 +362,59 @@ def editar_carro(id_veiculo):
 def excluir_carro(id_veiculo):
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
-
     try:
+        # Guarda a data e hora atual para validar os agendamentos.
+        agora = datetime.datetime.now()
+        # Verifica se o veiculo existe antes de excluir.
+        cur.execute(
+            """
+            SELECT ID_VEICULO -- Seleciona o id do veiculo.
+            FROM VEICULO -- Define a tabela de veiculos.
+            WHERE ID_VEICULO = ? -- Filtra pelo id do veiculo.
+            """,
+            (id_veiculo,)
+        )
+        # Retorna erro quando o veiculo nao existe.
+        if not cur.fetchone():
+            return jsonify({'erro': 'Carro não encontrado.'}), 404
         # Busca manutencoes vinculadas ao veiculo.
         cur.execute(  # Consulta se o veiculo possui manutencoes.
             """
-            SELECT ID_MANUTENCAO -- Seleciona o id da manutencao.
+            SELECT ID_MANUTENCAO, DATA_MANUTENCAO -- Seleciona o id da manutencao.
             FROM MANUTENCAO -- Define a tabela de manutencoes.
             WHERE ID_VEICULO = ? -- Filtra pelo veiculo informado.
             """,
             (id_veiculo,)
         )
-
-        # Bloqueia exclusao se houver manutencao vinculada.
-        if cur.fetchone():
-            return jsonify({'erro': 'Operação bloqueada: Este veículo possui manutenções vinculadas.'}), 409
-
+        # Recupera todas as manutencoes do veiculo.
+        manutencoes = cur.fetchall()
+        # Bloqueia a exclusao quando houver manutencao agendada para o futuro.
+        for manutencao in manutencoes:
+            if manutencao[1] > agora:
+                return jsonify({
+                    'erro': 'Operação bloqueada: existe manutenção agendada no futuro para este veículo. Exclua o agendamento antes de excluir o carro.'
+                }), 409
+        # Exclui os itens e as manutencoes vinculadas ao veiculo.
+        for manutencao in manutencoes:
+            id_manutencao = manutencao[0]
+            # Exclui os itens da manutencao.
+            cur.execute(
+                """
+                DELETE
+                FROM ITEM_MANUTENCAO
+                WHERE ID_MANUTENCAO = ?
+                """,
+                (id_manutencao,)
+            )
+            # Exclui a manutencao.
+            cur.execute(
+                """
+                DELETE
+                FROM MANUTENCAO
+                WHERE ID_MANUTENCAO = ?
+                """,
+                (id_manutencao,)
+            )
         # Exclui o veiculo do banco.
         cur.execute(  # Remove o veiculo pelo id informado.
             """
@@ -386,36 +424,29 @@ def excluir_carro(id_veiculo):
             """,
             (id_veiculo,)
         )
-
         # Confirma a exclusao no banco.
         con.commit()
-
         # Define o nome padrao da imagem do veiculo.
         nome_imagem = f'veico_{id_veiculo}.png'
-
         # Monta o caminho completo da imagem.
         caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
-
         # Verifica se a imagem existe.
         if os.path.isfile(caminho_foto):
             # Remove a imagem do veiculo excluido.
             os.remove(caminho_foto)
-
         # Retorna sucesso da exclusao.
         return jsonify({'mensagem': 'Carro excluído com sucesso!'}), 200
-
     except jwt.ExpiredSignatureError:
         # Retorna erro quando o token expirou.
         return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
-
     except jwt.InvalidTokenError:
         # Retorna erro quando o token e invalido.
         return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
-
     except Exception as e:
+        # Desfaz alteracoes pendentes em caso de erro.
+        con.rollback()
         # Retorna erro interno com detalhes.
         return jsonify({'erro': f'Erro ao excluir carro {e}'}), 500
-
     finally:
         # Fecha o cursor do banco.
         cur.close()
@@ -646,3 +677,4 @@ def buscar_categoria():
     finally:
         # Fecha o cursor do banco.
         cur.close()
+
