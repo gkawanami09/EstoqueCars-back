@@ -62,10 +62,10 @@ def deletar_marca(id_marca):  # Cria a funcao responsavel pela exclusao da marca
     cur = con.cursor()  # Abre um cursor para executar comandos SQL.
 
     try:  # Inicia o bloco protegido da exclusao.
-        cur.execute("SELECT ID_VEICULO FROM VEICULO WHERE ID_VEICULO = ?", (id_marca,))  # Busca veiculo com o id informado.
+        cur.execute("SELECT ID_VEICULO FROM VEICULO WHERE ID_MARCA = ?", (id_marca,))  # Busca veiculo com a marca informada.
 
         if cur.fetchone():  # Verifica se existe veiculo que bloqueia a exclusao.
-            return jsonify({'erro': 'Operação bloqueada'}), 409  # Retorna conflito quando a exclusao e bloqueada.
+            return jsonify({'erro': 'Operação bloqueada: Esta marca possui veículos vinculados.'}), 409  # Retorna conflito quando a exclusao e bloqueada.
 
         cur.execute('DELETE FROM MARCA WHERE ID_MARCA = ?', (id_marca,))  # Exclui a marca pelo id.
         con.commit()  # Confirma a exclusao no banco.

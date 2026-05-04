@@ -381,12 +381,19 @@ def deletar_manutencao(id_manutencao):
         # Guarda a data agendada.
         data_agendada = manutecao[0]
 
-        # Guarda a data e hora atual.
-        agora = datetime.datetime.now()
-
         # Bloqueia exclusao de historico ja ocorrido.
-        if data_agendada < agora:
+        if data_agendada < datetime.datetime.now():
             return jsonify({'erro': 'Não é possível excluir o histórico de uma manutenção que já aconteceu.'}), 403
+
+        # Remove primeiro os itens, pois eles dependem da manutencao.
+        cur.execute(
+            """
+            DELETE
+            FROM ITEM_MANUTENCAO
+            WHERE ID_MANUTENCAO = ?
+            """,
+            (id_manutencao,)
+        )
 
         # Exclui a manutencao pelo id.
         cur.execute(  # Exclui a manutencao pelo id informado.

@@ -11,6 +11,18 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 
+def obter_token_requisicao():
+    token = request.cookies.get('access_token')
+    if token:
+        return token
+
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.lower().startswith('bearer '):
+        return auth_header.split(' ', 1)[1].strip()
+
+    return request.headers.get('X-Access-Token')
+
+
 @app.route('/criar_usuario', methods=['POST'])
 def criar_usuario():
     cur = con.cursor()
@@ -419,7 +431,7 @@ def listar_usuario():
     cur = con.cursor()
 
     try:
-        cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE, TIPO_USUARIO FROM USUARIO")
+        cur.execute("SELECT ID_USUARIO, NOME, EMAIL, CPF, TELEFONE, TIPO_USUARIO, SITUACAO FROM USUARIO")
         usuarios = cur.fetchall()
 
         lista_usuarios = []
@@ -430,7 +442,8 @@ def listar_usuario():
                 'email': u[2],
                 'telefone': u[4],
                 'cpf': u[3],
-                'tipo_usuario': u[5]
+                'tipo_usuario': u[5],
+                'situacao': u[6]
             })
         return jsonify(lista_usuarios), 200
     except Exception as e:
@@ -441,7 +454,7 @@ def listar_usuario():
 
 @app.route('/buscar_usuario/<string:nome>', methods=['GET'])
 def buscar_usuario(nome):
-    token = request.cookies.get('access_token')
+    token = obter_token_requisicao()
     if not token:
         return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
     cur = con.cursor()
@@ -486,7 +499,7 @@ def buscar_usuario(nome):
 
 @app.route('/excluir_usuario/<int:id_usuario>', methods=['DELETE'])
 def excluir_usuario(id_usuario):
-    token = request.cookies.get('access_token')
+    token = obter_token_requisicao()
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
     cur = con.cursor()
@@ -543,7 +556,7 @@ def logout():
 
 @app.route('/desbloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def desbloquear_usuario(id_bloqueado):
-    token = request.cookies.get('access_token')
+    token = obter_token_requisicao()
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
     cur = con.cursor()
@@ -583,7 +596,7 @@ def desbloquear_usuario(id_bloqueado):
 
 @app.route('/bloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def bloquear_usuario(id_bloqueado):
-    token = request.cookies.get('access_token')
+    token = obter_token_requisicao()
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
 

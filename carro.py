@@ -461,7 +461,7 @@ def listar_carro():
         FROM VEICULO V -- Define a tabela principal de veiculos.
                  INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA -- Junta o veiculo com sua marca.
                  INNER JOIN CATEGORIA C ON V.ID_CATEGORIA = C.ID_CATEGORIA -- Junta o veiculo com sua categoria.
-        WHERE 1=1 -- Mantem a consulta preparada para receber filtros opcionais.
+        WHERE 1=1 -- WHERE 1=1 é uma condição que sempre é verdadeira e não filtra nada.Ela é usada só para facilitar a montagem da query, permitindo adicionar vários AND depois sem precisar tratar qual é o primeiro filtro.
     """
 
     # Cria a lista de valores usados nos filtros.
