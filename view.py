@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, make_response, render_template
+﻿from flask import Flask, jsonify, request, make_response, render_template
 from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import datetime
@@ -597,6 +597,8 @@ def desbloquear_usuario(id_bloqueado):
 @app.route('/bloquear_usuario/<int:id_bloqueado>', methods=['PUT'])
 def bloquear_usuario(id_bloqueado):
     token = obter_token_requisicao()
+    dados = request.get_json()
+    mensagem_texto = dados.get('mensagem')
     if not token:
         return jsonify({"erro": "Acesso negado. Token não encontrado."}), 401
 
@@ -611,20 +613,33 @@ def bloquear_usuario(id_bloqueado):
         if not usuario_logado or usuario_logado[0] != 2:
             return jsonify({'erro': 'Apenas administradores podem bloquear usuário.'}), 403
 
-        # impedir bloquear a sdi mesmo
+        # impedir bloquear a si mesmo
         if id_adm == id_bloqueado:
             return jsonify({'erro': 'Você não pode bloquear sua própria conta.'}), 400
 
         # verificar se existe
-        cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE ID_USUARIO = ?", (id_bloqueado,))
-        if not cur.fetchone():
+        cur.execute("SELECT ID_USUARIO, EMAIL, SITUACAO FROM USUARIO WHERE ID_USUARIO = ?", (id_bloqueado,))
+        usuario = cur.fetchone()
+        if not usuario:
             return jsonify({'erro': 'Usuário não encontrado.'}), 404
+        email = usuario[1]
+        situacao = usuario[2]
 
-        # bloquear
-        cur.execute("UPDATE USUARIO SET SITUACAO = 1 WHERE ID_USUARIO = ?", (id_bloqueado,))
-        con.commit()
+        if situacao == 0:
+            if not mensagem_texto:
+                return jsonify({'erro': 'Os campos assunto e mensagem são obrigatórios.'}), 400
 
-        return jsonify({'mensagem': 'Usuário bloqueado com sucesso!'}), 200
+            template_html = render_template('email_generico.html', mensagem_texto=mensagem_texto)
+
+            thread = threading.Thread(target=enviando_email, args=(email, "Sua conta foi bloqueada" ,template_html))
+            thread.start()
+            
+            # bloquear
+            cur.execute("UPDATE USUARIO SET SITUACAO = 1 WHERE ID_USUARIO = ?", (id_bloqueado,))
+            con.commit()
+
+            return jsonify({'mensagem': 'Usuário bloqueado com sucesso!'}), 200
+        return jsonify({'erro' : 'O usuário já está bloqueado!'})
 
     except jwt.ExpiredSignatureError:
         return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
