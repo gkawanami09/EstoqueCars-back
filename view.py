@@ -23,17 +23,18 @@ def obter_token_requisicao():
     return request.headers.get('X-Access-Token')
 
 
-@app.route('/criar_usuario', methods=['POST'])
+@app.route('/criar_usuario', methods=['POST'])      #adicionar campo de tipo no front
 def criar_usuario():
     cur = con.cursor()
     try:
+        tipo = request.form.get('tipo', 0)
         nome = request.form.get('nome').lower()
         telefone = request.form.get('telefone')
         email = request.form.get('email')
         senha = request.form.get('senha')
         cpf = request.form.get('cpf')
         foto_perfil = request.files.get('foto_perfil')
-
+        
         if not nome or nome.split() == None:
             return jsonify({'erro': 'Nome é obrigatório.'}), 400
         if not email or not senha:
@@ -46,7 +47,6 @@ def criar_usuario():
         erro_senha = verificar_senha(senha)
         if erro_senha:
             return jsonify({'erro': erro_senha}), 400
-
         cur.execute("""
                     SELECT EMAIL, CPF, TELEFONE
                     FROM USUARIO
@@ -72,28 +72,43 @@ def criar_usuario():
                                             TELEFONE,
                                             SENHA_HASH,
                                             CPF, SITUACAO,
-                                            CODIGO_ATIVACAO)
-                       VALUES (?, ?, ?, ?, ?, 2, ?)""",
-                    (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao))
+                                            CODIGO_ATIVACAO,
+                                            TIPO_USUARIO)
+                       VALUES (?, ?, ?, ?, ?, 2, ?, ?)""",
+                    (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao, tipo))
 
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
         id_usuario = cur.fetchone()[0]
 
         if foto_perfil:
-            nome_imagem = f'foto_perfil{id_usuario}.pgn'
+            nome_imagem = f'foto_perfil{id_usuario}.png'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
 
+
+        if tipo == 0:
+            assunto = "Confirme seu cadastro - Estoque Cars"
+
+            template_html = render_template('email_cadastro.html', nome=nome, codigo=codigo_ativacao)
+
+            thread = threading.Thread(target=enviando_email, args=(email, assunto, template_html))
+            thread.start()
+
+            return jsonify({'erro': 0, 'mensagem': 'Usuário criado com sucesso! Para ativar, verifique o seu e-mail.'}), 201
+        
+        cur.execute(
+                """
+                UPDATE USUARIO
+                SET SITUACAO = 0, 
+                CODIGO_ATIVACAO = NULL
+                 WHERE EMAIL = ?
+                       OR CPF = ?
+                       OR TELEFONE = ?
+                    """, (email, cpf, telefone)
+                
+        )
         con.commit()
-
-        assunto = "Confirme seu cadastro - Estoque Cars"
-
-        template_html = render_template('email_cadastro.html', nome=nome, codigo=codigo_ativacao)
-
-        thread = threading.Thread(target=enviando_email, args=(email, assunto, template_html))
-        thread.start()
-
-        return jsonify({'erro': 0, 'mensagem': 'Usuário criado com sucesso! Para ativar, verifique o seu e-mail.'}), 201
+        return jsonify({'mensagem' : 'Vendedor cadastrado com sucesso!'})
 
     except Exception as e:
         return jsonify({'erro': f'Erro ao criar: {e}'}), 500
