@@ -66,16 +66,27 @@ def criar_usuario():
 
         senha_hash = generate_password_hash(senha)
         codigo_ativacao = gerar_codigo()
-
-        cur.execute("""INSERT INTO USUARIO (NOME,
-                                            EMAIL,
-                                            TELEFONE,
-                                            SENHA_HASH,
-                                            CPF, SITUACAO,
-                                            CODIGO_ATIVACAO,
-                                            TIPO_USUARIO)
-                       VALUES (?, ?, ?, ?, ?, 2, ?, ?)""",
-                    (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao, tipo))
+        
+        
+        query = """INSERT INTO USUARIO (NOME,
+                                        EMAIL,
+                                        TELEFONE,
+                                        SENHA_HASH,
+                                        CPF,
+                                        CODIGO_ATIVACAO,
+                                        TIPO_USUARIO,
+                                        SITUACAO)"""
+                                            
+                                            
+        if tipo == 0:
+            query = query + """VALUES (?, ?, ?, ?, ?, ?, 0, 2) """
+        else:
+            query = query + """VALUES (?, ?, ?, ?, ?, NULL, 1, 0) """
+                
+                
+        cur.execute(query, (nome.capitalize(), email, telefone, senha_hash, cpf, codigo_ativacao))
+        
+                                            
 
         cur.execute("SELECT ID_USUARIO FROM USUARIO WHERE EMAIL = ?", (email,))
         id_usuario = cur.fetchone()[0]
@@ -85,7 +96,8 @@ def criar_usuario():
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             foto_perfil.save(caminho_foto)
 
-
+        con.commit()
+        
         if tipo == 0:
             assunto = "Confirme seu cadastro - Estoque Cars"
 
@@ -96,18 +108,7 @@ def criar_usuario():
 
             return jsonify({'erro': 0, 'mensagem': 'Usuário criado com sucesso! Para ativar, verifique o seu e-mail.'}), 201
         
-        cur.execute(
-                """
-                UPDATE USUARIO
-                SET SITUACAO = 0, 
-                CODIGO_ATIVACAO = NULL
-                 WHERE EMAIL = ?
-                       OR CPF = ?
-                       OR TELEFONE = ?
-                    """, (email, cpf, telefone)
-                
-        )
-        con.commit()
+
         return jsonify({'mensagem' : 'Vendedor cadastrado com sucesso!'})
 
     except Exception as e:
