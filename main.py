@@ -28,6 +28,7 @@ import carro
 import marca
 import servico
 import manutencao
+import venda
 from view import *
 
 if __name__ == '__main__':
