@@ -1,17 +1,15 @@
-from main import app, con
+﻿from main import app, con
 from flask import jsonify, request
 from main import app
 import datetime, os
-
-#PIP INSTALL pixqrcode
-
+from function import gerar_pix
 
 
 @app.route('/cadastrar_venda', methods=['POST'])
 def cadastrar_venda():
     cur = con.cursor()
     try:
-        dados = request.form
+        dados = request.form.to_dict() if request.form else (request.get_json(silent=True) or {})
 
         id_usuario = dados.get('id_usuario')
         id_veiculo = dados.get('id_veiculo')
@@ -22,69 +20,80 @@ def cadastrar_venda():
         status_pagamento = dados.get('status_pagamento')
         comentarios = dados.get('comentarios')
         desconto = dados.get('desconto', 0)
-        
+
         comprovante = request.files.get('comprovante')
-        
+
         if (
-            not id_usuario or
-            not id_veiculo or
-            not forma_pagamento or
-            not data_venda or
-            not valor_venda or
-            not valor_recebido or
-            not status_pagamento
+            id_usuario is None or (isinstance(id_usuario, str) and not id_usuario.strip()) or
+            id_veiculo is None or (isinstance(id_veiculo, str) and not id_veiculo.strip()) or
+            forma_pagamento is None or (isinstance(forma_pagamento, str) and not forma_pagamento.strip()) or
+            data_venda is None or (isinstance(data_venda, str) and not data_venda.strip()) or
+            valor_venda is None or (isinstance(valor_venda, str) and not valor_venda.strip()) or
+            valor_recebido is None or (isinstance(valor_recebido, str) and not valor_recebido.strip()) or
+            status_pagamento is None or (isinstance(status_pagamento, str) and not status_pagamento.strip())
         ):
-            return jsonify({'erro': 'Todos os campos obrigatórios devem estar preenchidos'}), 400
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+
 
         forma_pagamento = int(forma_pagamento)
         valor_venda = float(valor_venda)
         valor_recebido = float(valor_recebido)
-        desconto = float(desconto)
-        
-        
+        desconto = float(desconto or 0)
+
+        chave_pix = None
+        nome_recebedor_pix = None
+        cidade_recebedor_pix = None
+
+        if forma_pagamento == 0:
+            chave_pix = dados.get('chave_pix') or app.config.get('PIX_CHAVE')
+            nome_recebedor_pix = dados.get('nome_recebedor_pix') or app.config.get('PIX_NOME', 'ESTOQUE CARS')
+            cidade_recebedor_pix = dados.get('cidade_recebedor_pix') or app.config.get('PIX_CIDADE', 'SAO PAULO')
+
+            if not chave_pix:
+                return jsonify({'erro': 'Chave PIX nao informada. Envie "chave_pix" ou configure PIX_CHAVE no backend.'}), 400
+
         if desconto > 10:
-            return jsonify({'erro' : 'Seu desconto está muito alto, ele pode ser até 10%'})
+            return jsonify({'erro' : 'Seu desconto esta muito alto, ele pode ser ate 10%'})
         if desconto < 0:
-            return jsonify({'erro' : 'O desconto deve ser maior ou igual à 0'})
-        
-        
+            return jsonify({'erro' : 'O desconto deve ser maior ou igual a 0'})
+
         data_venda = datetime.datetime.strptime(data_venda, '%d/%m/%Y %H:%M')
-        
+
         cur.execute(
             """
             SELECT ID_VEICULO, STATUS_ESTOQUE
             FROM VEICULO
             WHERE ID_VEICULO = ?
-            """, (id_veiculo,)   
+            """, (id_veiculo,)
         )
         veiculo = cur.fetchone()
-        
+
         if not veiculo:
-            return jsonify({'erro' : 'Veículo não encontrado'})
+            return jsonify({'erro' : 'Veiculo nao encontrado'})
         status = veiculo[1]
-        
+
         if status == 2:
-            return jsonify({'erro' : 'Este veículo já foi vendido.'})
-        
+            return jsonify({'erro' : 'Este veiculo ja foi vendido.'})
+
         if status == 3:
-            return jsonify({'erro' : 'Este veículo esta indisponível no momento.'})
-        
+            return jsonify({'erro' : 'Este veiculo esta indisponivel no momento.'})
+
         cur.execute(
             """
             SELECT ID_USUARIO
             FROM USUARIO
-            WHERE ID_USUARIO = ?     
+            WHERE ID_USUARIO = ?
             """, (id_usuario,)
         )
         usuario = cur.fetchone()
         if not usuario:
-            return jsonify({'error' : 'Usuário não encontrado'})
-        
+            return jsonify({'error' : 'Usuario nao encontrado'})
+
         if comprovante:
             nome_imagem = f'comprovante_{id_veiculo}.png'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             comprovante.save(caminho_foto)
-        
+
         cur.execute(
         """
         INSERT INTO VENDA(ID_USUARIO,
@@ -96,20 +105,54 @@ def cadastrar_venda():
                           STATUS_PAGAMENTO,
                           COMENTARIOS,
                           DESCONTOS)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ID_VENDA   
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ID_VENDA
         """, (id_usuario, id_veiculo, forma_pagamento, data_venda, valor_venda, valor_recebido, status_pagamento, comentarios, desconto))
-        
+
         id_venda = cur.fetchone()[0]
         cur.execute(
         """
-        UPDATE VEICULO 
+        UPDATE VEICULO
         SET STATUS_ESTOQUE = 2
-        WHERE ID_VEICULO = ?    
+        WHERE ID_VEICULO = ?
         """, (id_veiculo,)
-        )    
-        
-        
+        )
+
+        cur.execute(
+            """
+            SELECT PRECO
+            FROM VEICULO
+            WHERE ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+        valor_pix_row = cur.fetchone()
+        valor_pix = float(valor_pix_row[0]) if valor_pix_row else valor_venda
+
+        pix_qrcode = None
+        pix_copia_cola = None
+        if forma_pagamento == 0:
+            txid_pix = f'VENDA{id_venda}'
+            pix_gerado = gerar_pix(
+                chave=chave_pix,
+                nome=nome_recebedor_pix,
+                cidade=cidade_recebedor_pix,
+                valor=valor_pix,
+                pasta='pix',
+                txid=txid_pix
+            )
+            caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
+            pix_qrcode = f"/uploads/{caminho_pix.lstrip('/')}"
+            pix_copia_cola = pix_gerado.get('payload')
+
         if forma_pagamento == 1:
+            if (
+                dados.get('valor_parcelado') is None or
+                (isinstance(dados.get('valor_parcelado'), str) and not dados.get('valor_parcelado').strip()) or
+                dados.get('quantidade_parcelas') is None or
+                (isinstance(dados.get('quantidade_parcelas'), str) and not dados.get('quantidade_parcelas').strip())
+            ):
+                return jsonify({'erro': 'valor_parcelado e quantidade_parcelas sao obrigatorios para pagamento parcelado'}), 400
+
             valor_parcela = float(dados.get('valor_parcelado'))
             quantidade_parcelas = int(dados.get('quantidade_parcelas'))
             valor_total_parcelado = valor_parcela * quantidade_parcelas
@@ -117,23 +160,30 @@ def cadastrar_venda():
             """
              EXECUTE PROCEDURE pr_insere_parcelas(?, ?, ?, ?)
             """, (valor_parcela, quantidade_parcelas, valor_total_parcelado, id_venda))
-        
-            con.commit()
-        
-        return jsonify({'mensagem' : 'Venda cadastrada com sucesso'}), 201
+
+        con.commit()
+
+        resposta = {'mensagem': 'Venda cadastrada com sucesso'}
+        if pix_qrcode:
+            resposta['pix_qrcode'] = pix_qrcode
+        if pix_copia_cola:
+            resposta['pix_copia_cola'] = pix_copia_cola
+        return jsonify(resposta), 201
     except Exception as e:
-        return jsonify({'erro' : f'Erro ao cadastrar veículo {e}'}), 500
+        return jsonify({'erro' : f'Erro ao cadastrar veiculo {e}'}), 500
     finally:
         cur.close()
-        
+
 
 @app.route('/listar_venda', methods=['GET'])
 def listar_venda():
     return jsonify({'mensagem':'listar_venda em desenvolvimento'})
 
+
 @app.route('/editar_venda', methods=['PUT'])
 def editar_venda():
     return jsonify({'mensagem':'editar venda em desenvolvimento'})
+
 
 @app.route('/deletar_venda', methods=['DELETE'])
 def deletar_venda():

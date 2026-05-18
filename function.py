@@ -1,7 +1,9 @@
-import random
+import random, os
 import string
 import smtplib
 import ssl
+import re
+import unicodedata
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import request, jsonify
@@ -10,7 +12,8 @@ import jwt, datetime
 from main import con
 from validate_docbr import RENAVAM
 from functools import wraps
-# Importa o wraps, que serve para não deixar a função perder o nome original
+from pixqrcode import qrcode
+# Importa o wraps, que serve para nÃ£o deixar a funÃ§Ã£o perder o nome original
 
 from main import app
 from flask_bcrypt import generate_password_hash, check_password_hash
@@ -24,7 +27,7 @@ def atualizar_historico_senhas(id_usuario, nova_senha, cur):
     cur.execute("SELECT SENHA_HASH FROM USUARIO WHERE ID_USUARIO = ?", (id_usuario,))
      # Pega o resultado da consulta (uma linha)
     atual_row = cur.fetchone()
-    # Se encontrou a senha, pega o valor; senão, fica como None
+    # Se encontrou a senha, pega o valor; senÃ£o, fica como None
     senha_atual_banco = atual_row[0] if atual_row else None
 
     # Busca o historico das duas ultimas senhas
@@ -32,7 +35,7 @@ def atualizar_historico_senhas(id_usuario, nova_senha, cur):
      # Pega o resultado da consulta
     historico = cur.fetchone()
 
-    # Lista que vai armazenar todas as senhas para comparação
+    # Lista que vai armazenar todas as senhas para comparaÃ§Ã£o
     # (senha atual + duas anteriores)
     senhas_para_checar = []
 
@@ -41,13 +44,13 @@ def atualizar_historico_senhas(id_usuario, nova_senha, cur):
         senhas_para_checar.append(senha_atual_banco)
     if historico:
         if historico[0]:
-            # Se a coluna SENHA_NOVA não for vazia, adiciona
+            # Se a coluna SENHA_NOVA nÃ£o for vazia, adiciona
             senhas_para_checar.append(historico[0])
         if historico[1]:
-            # Se a coluna SENHA_NOVISSIMA não for vazia, adiciona
+            # Se a coluna SENHA_NOVISSIMA nÃ£o for vazia, adiciona
             senhas_para_checar.append(historico[1])
 
-     # Verifica se a nova senha já foi usada anteriormente
+     # Verifica se a nova senha jÃ¡ foi usada anteriormente
     for senha_banco in senhas_para_checar:
          # check_password_hash compara a senha digitada com o hash salvo
         if check_password_hash(senha_banco, nova_senha):
@@ -56,7 +59,7 @@ def atualizar_historico_senhas(id_usuario, nova_senha, cur):
 
     # Atualiza o historico com a senha atual (antes de trocar pela nova)
     if senha_atual_banco:
-         # Se já existe histórico
+         # Se jÃ¡ existe histÃ³rico
         if historico:
             cur.execute(
                 "UPDATE SENHA SET SENHA_NOVISSIMA = ?, SENHA_NOVA = ? WHERE ID_USUARIO = ?",
@@ -90,7 +93,7 @@ def recalcular_total_manutencao(id_manutencao, cur):
 
 def verificar_senha(senha):
     if len(senha) < 10:
-        return "A senha deve ter no mínimo 10 caracteres"
+        return "A senha deve ter no mÃ­nimo 10 caracteres"
 
     tem_maiuscula = False
     tem_minuscula = False
@@ -108,10 +111,10 @@ def verificar_senha(senha):
         elif letra in simbolos:
             tem_simbolo = True
 
-    if not tem_maiuscula: return "Falta uma letra maiúscula"
-    if not tem_minuscula: return "Falta uma letra minúscula"
-    if not tem_numero:    return "Falta um número"
-    if not tem_simbolo:   return "Falta um símbolo especial"
+    if not tem_maiuscula: return "Falta uma letra maiÃºscula"
+    if not tem_minuscula: return "Falta uma letra minÃºscula"
+    if not tem_numero:    return "Falta um nÃºmero"
+    if not tem_simbolo:   return "Falta um sÃ­mbolo especial"
 
     return None
 
@@ -122,7 +125,7 @@ def enviando_email(destinatario, assunto, mensagem_html):
 
     #MIMEMultipart ele e como um envelope vazio
     msg = MIMEMultipart()
-    #nesse você escreve as informações por fora do envelope (Remetente, Destinatário, Assunto)
+    #nesse vocÃª escreve as informaÃ§Ãµes por fora do envelope (Remetente, DestinatÃ¡rio, Assunto)
     msg['Subject'] = assunto
     msg['From'] = user
     msg['To'] = destinatario
@@ -158,3 +161,179 @@ def gerar_token(id_user):
 # renavam_validacao = RENAVAM()
 # novo_renavam = renavam_validacao.generate()
 # print(novo_renavam)
+
+
+# =========================================================
+# FORMATA OS CAMPOS NO PADRÃƒO PIX
+# =========================================================
+def format_field(id, value):
+
+    # pega tamanho do valor
+    size = f"{len(value):02d}"
+
+    # retorna:
+    # ID + TAMANHO + VALOR
+    return f"{id}{size}{value}"
+
+
+# =========================================================
+# GERA ASSINATURA CRC16
+# =========================================================
+def crc16(payload):
+
+    # polinÃ´mio padrÃ£o
+    polinomio = 0x1021
+
+    # valor inicial
+    resultado = 0xFFFF
+
+    # percorre payload
+    for c in payload:
+
+        resultado ^= (ord(c) << 8)
+
+        # percorre bits
+        for _ in range(8):
+
+            # verifica bit mais significativo
+            if resultado & 0x8000:
+
+                resultado = (resultado << 1) ^ polinomio
+
+            else:
+
+                resultado <<= 1
+
+            # limita em 16 bits
+            resultado &= 0xFFFF
+
+    # retorna hexadecimal
+    return f"{resultado:04X}"
+
+
+
+
+# =========================================================
+# GERA IMAGEM QR CODE
+# =========================================================
+def gerar_qrcode(payload, nome_arquivo, pasta):
+
+    # cria pasta automaticamente dentro de uploads
+    pasta_destino = os.path.join(
+        app.config['UPLOAD_FOLDER'],
+        "pagamento",
+        pasta
+    )
+    os.makedirs(pasta_destino, exist_ok=True)
+
+    # gera QR Code
+    qr = qrcode.make(payload)
+
+    # caminho absoluto para salvar
+    nome_imagem = f"{nome_arquivo}.png"
+    caminho_absoluto = os.path.join(pasta_destino, nome_imagem)
+
+    # salva imagem
+    qr.save(caminho_absoluto)
+
+    # caminho relativo para consumo no endpoint /uploads/<path:nome_arquivo>
+    caminho_relativo = os.path.join("pagamento", pasta, nome_imagem)
+
+    # retorna caminho
+    return caminho_relativo.replace("\\", "/")
+
+
+
+
+# Implementacao revisada para aumentar compatibilidade com leitores bancarios.
+def _normalize_text(value, limit):
+    value = str(value or "").strip().upper()
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^A-Z0-9 ]", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value[:limit]
+
+
+def _normalize_txid(txid):
+    txid = str(txid or "***").strip()
+    if txid == "***":
+        return txid
+    txid = re.sub(r"[^A-Za-z0-9]", "", txid)
+    txid = txid[:25]
+    return txid or "***"
+
+
+def gerar_payload_pix(
+    chave,
+    nome,
+    cidade,
+    valor,
+    txid="***"
+):
+    chave = str(chave or "").strip()
+    if not chave:
+        raise ValueError("Chave PIX invalida para gerar QR Code.")
+
+    nome = _normalize_text(nome, 25) or "RECEBEDOR"
+    cidade = _normalize_text(cidade, 15) or "CIDADE"
+    txid = _normalize_txid(txid)
+
+    valor_float = float(valor)
+    if valor_float < 0:
+        raise ValueError("Valor PIX invalido.")
+
+    payload = ""
+    payload += format_field("00", "01")
+
+    # Estatico reutilizavel
+    payload += format_field("01", "11")
+
+    merchant_account = ""
+    merchant_account += format_field("00", "br.gov.bcb.pix")
+    merchant_account += format_field("01", chave)
+    payload += format_field("26", merchant_account)
+
+    payload += format_field("52", "0000")
+    payload += format_field("53", "986")
+    payload += format_field("54", f"{valor_float:.2f}")
+    payload += format_field("58", "BR")
+    payload += format_field("59", nome)
+    payload += format_field("60", cidade)
+
+    additional = format_field("05", txid)
+    payload += format_field("62", additional)
+
+    payload += "6304"
+    payload += crc16(payload)
+    return payload
+
+
+def gerar_pix(
+    chave,
+    nome,
+    cidade,
+    valor,
+    pasta,
+    txid="***"
+):
+    txid_normalizado = _normalize_txid(txid)
+
+    payload = gerar_payload_pix(
+        chave=chave,
+        nome=nome,
+        cidade=cidade,
+        valor=valor,
+        txid=txid_normalizado
+    )
+
+    caminho_imagem = gerar_qrcode(
+        payload,
+        f"{txid_normalizado}",
+        pasta
+    )
+
+    return {
+        "imagem": caminho_imagem,
+        "payload": payload
+    }

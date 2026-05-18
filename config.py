@@ -8,3 +8,7 @@ DB_USER = 'sysdba'
 DB_PASSWORD = 'sysdba'
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+
+PIX_CHAVE = '51315073838'
+PIX_NOME = 'EstoqueCars'
+PIX_CIDADE = 'Birigui'
