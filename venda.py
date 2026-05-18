@@ -188,3 +188,76 @@ def editar_venda():
 @app.route('/deletar_venda', methods=['DELETE'])
 def deletar_venda():
     return jsonify({'mensagem': 'deletar venda em desenvolvimento'})
+
+
+@app.route('/configuracoes', methods=['GET'])
+def obter_configuracoes():
+    cur = con.cursor()
+    try:
+        cur.execute("""
+            SELECT NOME_EMPRESA, CNPJ, TELEFONE_EMPRESA, EMAIL_CONTATO, 
+                   TAXA_JURO, COR_PRIMARIA, COR_SECUNDARIA, FONTE_VISUAL
+            FROM CONFIGURACAO WHERE ID_EMPRESA = 1
+        """)
+        config = cur.fetchone()
+        
+        if not config:
+            return jsonify({'erro': 'Configurações não encontradas'}), 404
+            
+        dados = {
+            'nome_empresa': config[0],
+            'cnpj': config[1],
+            'telefone_empresa': config[2],
+            'email_contato': config[3],
+            'taxa_juro': config[4],
+            'cor_primaria': config[5] or '#FFFFFF',
+            'cor_secundaria': config[6] or '#000000',
+            'fonte_visual': config[7] or 'Arial',
+            # A URL da logo fica fixa, pois ela é salva direto no backend sempre com este nome:
+            'logo_url': f"http://seu-servidor.com/uploads/logo_empresa.png" 
+        }
+        
+        return jsonify(dados), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+    finally:
+        cur.close()
+
+
+@app.route('/configuracoes', methods=['PUT'])
+def atualizar_configuracoes():
+    cur = con.cursor()
+    try:
+        dados = request.form
+        
+        nome_empresa = dados.get('nome_empresa')
+        cnpj = dados.get('cnpj')
+        telefone = dados.get('telefone_empresa')
+        email = dados.get('email_contato')
+        taxa_juro = float(dados.get('taxa_juro', 0))
+        cor_primaria = dados.get('cor_primaria')
+        cor_secundaria = dados.get('cor_secundaria')
+        fonte_visual = dados.get('fonte_visual')
+        
+        # 1. Processamento do Upload da Logo (Salva apenas fisicamente na pasta)
+        logo = request.files.get('logo')
+        if logo:
+            # Salva sempre com o mesmo nome para sobrescrever a antiga
+            caminho_logo = os.path.join(app.config['UPLOAD_FOLDER'], 'logo_empresa.png')
+            logo.save(caminho_logo)
+
+        
+        cur.execute("""
+            UPDATE CONFIGURACAO 
+            SET NOME_EMPRESA=?, CNPJ=?, TELEFONE_EMPRESA=?, EMAIL_CONTATO=?, 
+                TAXA_JURO=?, COR_PRIMARIA=?, COR_SECUNDARIA=?, FONTE_VISUAL=?
+            WHERE ID_EMPRESA = 1
+        """, (nome_empresa, cnpj, telefone, email, taxa_juro, cor_primaria, cor_secundaria, fonte_visual))
+
+        con.commit()
+        return jsonify({'mensagem': 'Configurações atualizadas com sucesso!'}), 200
+
+    except Exception as e :
+        return jsonify({'erro': f'Erro ao atualizar: {e}'}), 500
+    finally:
+        cur.close()
