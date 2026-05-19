@@ -5,3 +5,4 @@ fdb
 PyJWT
 validate_docbr
 pixqrcode
+Pillow

@@ -1,10 +1,7 @@
-# -*- coding: cp1252 -*-
 from main import app, con
 from flask import jsonify, request
-from main import app
 import datetime, os
 from function import gerar_pix
-
 
 @app.route('/cadastrar_venda', methods=['POST'])
 def cadastrar_venda():
@@ -166,22 +163,6 @@ def cadastrar_venda():
     finally:
         cur.close()
 
-
-@app.route('/listar_venda', methods=['GET'])
-def listar_venda():
-    return jsonify({'mensagem':'listar_venda em desenvolvimento'})
-
-
-@app.route('/editar_venda', methods=['PUT'])
-def editar_venda():
-    return jsonify({'mensagem':'editar venda em desenvolvimento'})
-
-
-@app.route('/deletar_venda', methods=['DELETE'])
-def deletar_venda():
-    return jsonify({'mensagem': 'deletar venda em desenvolvimento'})
-
-
 @app.route('/listar_vendas_usuario', methods=['GET'])
 def listar_vendas_usuario():
     cur = con.cursor()
@@ -250,10 +231,9 @@ def listar_pix_parcelas(id_venda):
         cidade_recebedor_pix = request.args.get('cidade_recebedor_pix') or app.config.get('PIX_CIDADE', 'SAO PAULO')
 
         if not chave_pix:
-            return jsonify({'erro': 'Chave PIX nao informada. Configure PIX_CHAVE no backend.'}), 400
+            return jsonify({'erro': 'Chave PIX nÃ£o informada. Configure PIX_CHAVE no backend.'}), 400
 
-        cur.execute(
-            """
+        cur.execute("""
             SELECT P.ID_PARCELAMENTO,
                    P.ID_VENDA,
                    I.ID_ITEM_PARCELAMENTO,
@@ -266,21 +246,22 @@ def listar_pix_parcelas(id_venda):
                 ON I.ID_PARCELAMENTO = P.ID_PARCELAMENTO
             WHERE P.ID_VENDA = ?
             ORDER BY I.NUMERO_PARCELA
-            """,
-            (id_venda,)
-        )
+        """, (id_venda,))
+
         linhas = cur.fetchall()
 
         if not linhas:
             return jsonify({'erro': 'Nenhuma parcela encontrada para esta venda.'}), 404
 
         parcelas = []
+
         for linha in linhas:
             id_item_parcelamento = linha[2]
             numero_parcela = linha[3]
             valor_parcela = float(linha[4] or 0)
             data_vencimento = linha[5]
             situacao_parcela = linha[6]
+
             txid_pix = f'PARC{id_item_parcelamento}'
 
             pix_gerado = gerar_pix(
@@ -293,6 +274,7 @@ def listar_pix_parcelas(id_venda):
             )
 
             caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
+
             parcelas.append({
                 'id_item_parcelamento': id_item_parcelamento,
                 'numero_parcela': numero_parcela,
@@ -304,8 +286,10 @@ def listar_pix_parcelas(id_venda):
             })
 
         return jsonify({'parcelas': parcelas}), 200
+
     except Exception as e:
-        return jsonify({'erro': f'Erro ao gerar Pix das parcelas {e}'}), 500
+        return jsonify({'erro': f'Erro ao gerar Pix das parcelas: {e}'}), 500
+
     finally:
         cur.close()
 
@@ -321,7 +305,7 @@ def obter_configuracoes():
         config = cur.fetchone()
         
         if not config:
-            return jsonify({'erro': 'Configurações não encontradas'}), 404
+            return jsonify({'erro': ''}), 404
             
         dados = {
             'nome_empresa': config[0],
@@ -333,13 +317,13 @@ def obter_configuracoes():
             'cor_primaria': config[5] or '#FFFFFF',
             'cor_secundaria': config[6] or '#000000',
             'fonte_visual': config[7] or 'Arial',
-            # A URL da logo fica fixa, pois ela é salva direto no backend sempre com este nome:
+            # A URL da logo fica fixa, pois ela ï¿½ salva direto no backend sempre com este nome:
             'logo_url': f"http://seu-servidor.com/uploads/logo_empresa.png" 
         }
         
         return jsonify(dados), 200
     except Exception as e:
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({'erro': f'Erro na configuaracoes{e}'}), 500
     finally:
         cur.close()
 
@@ -378,9 +362,11 @@ def atualizar_configuracoes():
         """, (nome_empresa, cnpj, telefone, email, taxa_juro, cor_primaria, cor_secundaria, fonte_visual))
 
         con.commit()
-        return jsonify({'mensagem': 'Configurações atualizadas com sucesso!'}), 200
+        return jsonify({'mensagem': 'ConfiguraÃ§Ãµes atualizadas com sucesso!'}), 200
 
     except Exception as e :
         return jsonify({'erro': f'Erro ao atualizar: {e}'}), 500
     finally:
         cur.close()
+
+

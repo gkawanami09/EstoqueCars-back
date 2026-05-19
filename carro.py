@@ -357,6 +357,55 @@ def editar_carro(id_veiculo):
         # Fecha o cursor do banco.
         cur.close()
 
+@app.route('/reservar_carro/<int:id_veiculo>', methods=['POST'])
+def reservar_carro(id_veiculo):
+    cur = con.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT ID_VEICULO, STATUS_ESTOQUE
+            FROM VEICULO
+            WHERE ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+        veiculo = cur.fetchone()
+
+        if not veiculo:
+            return jsonify({'erro': 'Carro nao encontrado.'}), 404
+
+        status = str(veiculo[1] or '').strip()
+
+        if status == '2':
+            return jsonify({'erro': 'Este veiculo ja foi vendido.'}), 409
+
+        if status == '3':
+            return jsonify({'erro': 'Este veiculo ja esta reservado ou indisponivel.'}), 409
+
+        cur.execute(
+            """
+            UPDATE VEICULO
+            SET STATUS_ESTOQUE = 3
+            WHERE ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+        con.commit()
+
+        return jsonify({'mensagem': 'Veiculo reservado com sucesso!'}), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessao expirada. Faca login novamente.'}), 401
+
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token invalido ou adulterado.'}), 401
+
+    except Exception as e:
+        con.rollback()
+        return jsonify({'erro': f'Erro ao reservar carro: {e}'}), 500
+
+    finally:
+        cur.close()
 
 @app.route('/excluir_carro/<int:id_veiculo>', methods=['DELETE'])
 def excluir_carro(id_veiculo):
@@ -677,4 +726,3 @@ def buscar_categoria():
     finally:
         # Fecha o cursor do banco.
         cur.close()
-
