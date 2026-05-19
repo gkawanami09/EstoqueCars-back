@@ -10,6 +10,8 @@ import datetime, os
 # Importa a funcao que gera o QR Code e o codigo copia e cola do PIX.
 from function import gerar_pix
 
+JUROS_PADRAO = 4
+
 
 # Cria a rota que cadastra uma venda usando o metodo POST.
 @app.route('/cadastrar_venda', methods=['POST'])
@@ -448,6 +450,95 @@ def listar_pix_parcelas(id_venda):
         cur.close()
 
 
+# Cria a rota para marcar uma parcela como paga depois que o Pix for copiado.
+@app.route('/pagar_parcela_pix/<int:id_item_parcelamento>', methods=['POST'])
+def pagar_parcela_pix(id_item_parcelamento):
+    # Cria um cursor para executar comandos SQL.
+    cur = con.cursor()
+
+    # Usa try para capturar erros e manter o banco consistente.
+    try:
+        # Busca a parcela, o parcelamento e a venda vinculada.
+        cur.execute("""
+            SELECT I.ID_PARCELAMENTO,
+                   I.SITUACAO_PARCELA,
+                   P.ID_VENDA
+            FROM ITEM_PARCELAMENTO I
+            INNER JOIN PARCELAMENTO P
+                ON P.ID_PARCELAMENTO = I.ID_PARCELAMENTO
+            WHERE I.ID_ITEM_PARCELAMENTO = ?
+        """, (id_item_parcelamento,))
+
+        # Pega a parcela encontrada.
+        parcela = cur.fetchone()
+
+        # Retorna erro se o id nao existir.
+        if not parcela:
+            return jsonify({'erro': 'Parcela nao encontrada.'}), 404
+
+        # Separa os dados necessarios para atualizar a parcela e a venda.
+        id_parcelamento = parcela[0]
+        situacao_parcela = parcela[1]
+        id_venda = parcela[2]
+
+        # Marca a parcela como paga quando ainda estiver pendente.
+        if int(situacao_parcela or 0) != 1:
+            cur.execute("""
+                UPDATE ITEM_PARCELAMENTO
+                SET SITUACAO_PARCELA = 1
+                WHERE ID_ITEM_PARCELAMENTO = ?
+            """, (id_item_parcelamento,))
+
+        # Conta quantas parcelas continuam pendentes no mesmo parcelamento.
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM ITEM_PARCELAMENTO
+            WHERE ID_PARCELAMENTO = ?
+              AND COALESCE(SITUACAO_PARCELA, 0) <> 1
+        """, (id_parcelamento,))
+
+        # Pega a quantidade de pendencias.
+        parcelas_pendentes = cur.fetchone()[0]
+
+        # Se nao existe mais pendencia, quita parcelamento e venda.
+        compra_quitada = parcelas_pendentes == 0
+        if compra_quitada:
+            cur.execute("""
+                UPDATE PARCELAMENTO
+                SET SITUACAO_PARCELAMENTO = 1
+                WHERE ID_PARCELAMENTO = ?
+            """, (id_parcelamento,))
+
+            cur.execute("""
+                UPDATE VENDA
+                SET STATUS_PAGAMENTO = 0
+                WHERE ID_VENDA = ?
+            """, (id_venda,))
+
+        # Confirma as alteracoes no banco.
+        con.commit()
+
+        # Retorna o novo estado para o front atualizar a tela.
+        return jsonify({
+            'mensagem': 'Parcela marcada como paga.',
+            'id_venda': id_venda,
+            'id_item_parcelamento': id_item_parcelamento,
+            'situacao_parcela': 1,
+            'parcela_paga': True,
+            'compra_quitada': compra_quitada,
+            'parcelas_pendentes': parcelas_pendentes
+        }), 200
+
+    # Retorna erro se algo falhar.
+    except Exception as e:
+        con.rollback()
+        return jsonify({'erro': f'Erro ao pagar parcela: {e}'}), 500
+
+    # Fecha o cursor no final.
+    finally:
+        cur.close()
+
+
 # Cria a rota para buscar as configuracoes da empresa.
 @app.route('/configuracoes', methods=['GET'])
 def obter_configuracoes():
@@ -471,14 +562,19 @@ def obter_configuracoes():
             # Retorna erro 404 se nao existir configuracao.
             return jsonify({'erro': ''}), 404
 
+        # Usa juros padrao quando a configuracao estiver vazia ou zerada.
+        taxa_juro = float(config[4] or 0)
+        if taxa_juro <= 0:
+            taxa_juro = JUROS_PADRAO
+
         # Monta o dicionario com os dados da configuracao.
         dados = {
             'nome_empresa': config[0],              # Nome da empresa.
             'cnpj': config[1],                      # CNPJ da empresa.
             'telefone_empresa': config[2],          # Telefone da empresa.
             'email_contato': config[3],             # Email de contato.
-            'taxa_juro': float(config[4] or 0),     # Taxa de juros.
-            'taxa_juros': float(config[4] or 0),    # Mesmo valor, com outro nome para compatibilidade.
+            'taxa_juro': taxa_juro,                 # Taxa de juros.
+            'taxa_juros': taxa_juro,                # Mesmo valor, com outro nome para compatibilidade.
             'cor_primaria': config[5] or '#FFFFFF', # Cor primaria da interface.
             'cor_secundaria': config[6] or '#000000', # Cor secundaria da interface.
             'fonte_visual': config[7] or 'Arial',   # Fonte usada na interface.
@@ -518,13 +614,17 @@ def atualizar_configuracoes():
         telefone = dados.get('telefone_empresa')
         # Pega o email de contato.
         email = dados.get('email_contato')
-        # Pega a taxa de juros e converte para decimal; se nao vier nada, usa 0.
-        taxa_juro = float(dados.get('taxa_juro') or dados.get('taxa_juros') or 0)
+        # Pega a taxa de juros e converte para decimal; se nao vier nada, usa o padrao.
+        taxa_juro = float(dados.get('taxa_juro') or dados.get('taxa_juros') or JUROS_PADRAO)
 
         # Verifica se a taxa de juros e negativa.
         if taxa_juro < 0:
             # Retorna erro se a taxa de juros for menor que 0.
             return jsonify({'erro': 'A taxa de juros nao pode ser negativa'}), 400
+
+        # Se vier 0, mantem o juros padrao de 4%.
+        if taxa_juro == 0:
+            taxa_juro = JUROS_PADRAO
 
         # Pega a cor primaria da interface.
         cor_primaria = dados.get('cor_primaria')

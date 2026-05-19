@@ -267,6 +267,8 @@ def login():
             token = gerar_token(id_usuario)
 
             resp = make_response(jsonify({
+                'id_usuario': id_usuario,
+                'id_user': id_usuario,
                 'nome': nome,
                 'tipo_usuario': tipo,
                 'token': token,
