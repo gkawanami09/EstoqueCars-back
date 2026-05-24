@@ -78,7 +78,7 @@ def cadastrar_carro():
 
         # Verifica se os campos obrigatorios foram preenchidos.
         if not all([id_categoria, id_marca, modelo, ano_fabricacao, ano_modelo, preco, placa]):
-            return jsonify({'erro': 'Preencha todos os campos obrigatórios.'}), 400
+            return jsonify({'erro': 'Preencha todos os campos obrigatrios.'}), 400
 
         # Imprime uma marcacao simples no terminal.
         print('renavam')
@@ -426,6 +426,19 @@ def excluir_carro(id_veiculo):
         # Retorna erro quando o veiculo nao existe.
         if not cur.fetchone():
             return jsonify({'erro': 'Carro não encontrado.'}), 404
+        # Bloqueia a exclusao quando ja existe venda vinculada ao veiculo.
+        cur.execute(
+            """
+            SELECT FIRST 1 ID_VENDA
+            FROM VENDA
+            WHERE ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+        if cur.fetchone():
+            return jsonify({
+                'erro': 'Este veiculo ja possui venda cadastrada e nao pode ser excluido. Para manter o historico financeiro, altere o status do veiculo em vez de excluir.'
+            }), 409
         # Busca manutencoes vinculadas ao veiculo.
         cur.execute(  # Consulta se o veiculo possui manutencoes.
             """
@@ -494,6 +507,11 @@ def excluir_carro(id_veiculo):
     except Exception as e:
         # Desfaz alteracoes pendentes em caso de erro.
         con.rollback()
+        mensagem = str(e).lower()
+        if 'fk_vendas_veiculo' in mensagem or 'foreign key' in mensagem:
+            return jsonify({
+                'erro': 'Este veiculo ja possui venda cadastrada e nao pode ser excluido. Para manter o historico financeiro, altere o status do veiculo em vez de excluir.'
+            }), 409
         # Retorna erro interno com detalhes.
         return jsonify({'erro': f'Erro ao excluir carro {e}'}), 500
     finally:
@@ -726,3 +744,4 @@ def buscar_categoria():
     finally:
         # Fecha o cursor do banco.
         cur.close()
+
