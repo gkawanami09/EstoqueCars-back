@@ -365,12 +365,12 @@ def reservar_carro(id_veiculo):
         id_usuario = dados.get('id_usuario')
 
         if id_usuario is None or (isinstance(id_usuario, str) and not id_usuario.strip()):
-            return jsonify({'erro': 'id_usuario e obrigatorio para reservar o veiculo.'}), 400
+            return jsonify({'erro': 'id_usuario é obrigatório para reservar o veículo.'}), 400
 
         try:
             id_usuario = int(id_usuario)
         except (TypeError, ValueError):
-            return jsonify({'erro': 'id_usuario invalido.'}), 400
+            return jsonify({'erro': 'id_usuario inválido.'}), 400
 
         cur.execute(
             """
@@ -383,7 +383,7 @@ def reservar_carro(id_veiculo):
         usuario = cur.fetchone()
 
         if not usuario:
-            return jsonify({'erro': 'Cliente nao encontrado.'}), 404
+            return jsonify({'erro': 'Cliente não encontrado.'}), 404
 
         nome_usuario = usuario[1]
 
@@ -402,17 +402,17 @@ def reservar_carro(id_veiculo):
         veiculo = cur.fetchone()
 
         if not veiculo:
-            return jsonify({'erro': 'Carro nao encontrado.'}), 404
+            return jsonify({'erro': 'Carro não encontrado.'}), 404
 
         status = int(veiculo[1] or 0)
         id_usuario_reserva = veiculo[2]
 
         if status == 2:
-            return jsonify({'erro': 'Este veiculo ja foi vendido.'}), 409
+            return jsonify({'erro': 'Este veículo já foi vendido.'}), 409
 
         if id_usuario_reserva is not None:
             if int(id_usuario_reserva) != id_usuario:
-                return jsonify({'erro': 'Este veiculo ja esta reservado para outro cliente.'}), 409
+                return jsonify({'erro': 'Este veículo já está reservado para outro cliente.'}), 409
 
             if status != 3:
                 cur.execute(
@@ -426,7 +426,7 @@ def reservar_carro(id_veiculo):
 
             con.commit()
             return jsonify({
-                'mensagem': 'Veiculo ja estava reservado para este cliente.',
+                'mensagem': 'Veículo já estava reservado para este cliente.',
                 'id_usuario_reserva': id_usuario,
                 'nome_usuario_reserva': nome_usuario,
                 'precisa_concluir_venda': True,
@@ -434,7 +434,7 @@ def reservar_carro(id_veiculo):
             }), 200
 
         if status != 1:
-            return jsonify({'erro': 'Este veiculo nao esta disponivel para reserva.'}), 409
+            return jsonify({'erro': 'Este veículo não está disponível para reserva.'}), 409
 
         cur.execute(
             """
@@ -455,7 +455,7 @@ def reservar_carro(id_veiculo):
         con.commit()
 
         return jsonify({
-            'mensagem': 'Veiculo reservado com sucesso!',
+            'mensagem': 'Veículo reservado com sucesso!',
             'id_usuario_reserva': id_usuario,
             'nome_usuario_reserva': nome_usuario,
             'precisa_concluir_venda': True,
@@ -463,20 +463,87 @@ def reservar_carro(id_veiculo):
         }), 200
 
     except jwt.ExpiredSignatureError:
-        return jsonify({'erro': 'Sessao expirada. Faca login novamente.'}), 401
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
 
     except jwt.InvalidTokenError:
-        return jsonify({'erro': 'Token invalido ou adulterado.'}), 401
+        return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
 
     except Exception as e:
         con.rollback()
         mensagem = str(e).lower()
         if 'pk_reserva_veiculo' in mensagem or 'primary or unique key' in mensagem:
-            return jsonify({'erro': 'Este veiculo acabou de ser reservado por outro cliente.'}), 409
+            return jsonify({'erro': 'Este veículo acabou de ser reservado por outro cliente.'}), 409
         return jsonify({'erro': f'Erro ao reservar carro: {e}'}), 500
 
     finally:
         cur.close()
+
+@app.route('/cancelar_reserva_carro/<int:id_veiculo>', methods=['DELETE'])
+def cancelar_reserva_carro(id_veiculo):
+    cur = con.cursor()
+    try:
+        dados = request.get_json(silent=True) or request.form.to_dict() or {}
+        id_usuario = dados.get('id_usuario')
+
+        cur.execute(
+            """
+            SELECT V.ID_VEICULO,
+                   V.STATUS_ESTOQUE,
+                   RV.ID_USUARIO
+            FROM VEICULO V
+            LEFT JOIN RESERVA_VEICULO RV
+              ON RV.ID_VEICULO = V.ID_VEICULO
+            WHERE V.ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+        veiculo = cur.fetchone()
+
+        if not veiculo:
+            return jsonify({'erro': 'Carro não encontrado.'}), 404
+
+        id_usuario_reserva = veiculo[2]
+
+        if id_usuario_reserva is None:
+            return jsonify({'erro': 'Este veículo não possui reserva ativa.'}), 404
+
+        if id_usuario is not None and str(id_usuario).strip() and int(id_usuario_reserva) != int(id_usuario):
+            return jsonify({'erro': 'Está reserva pertence a outro cliente.'}), 403
+
+        cur.execute(
+            """
+            DELETE FROM RESERVA_VEICULO
+            WHERE ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+
+        cur.execute(
+            """
+            UPDATE VEICULO
+            SET STATUS_ESTOQUE = 1
+            WHERE ID_VEICULO = ?
+              AND STATUS_ESTOQUE = 3
+            """,
+            (id_veiculo,)
+        )
+
+        con.commit()
+
+        return jsonify({
+            'mensagem': 'Reserva cancelada com sucesso.',
+            'status_estoque': 1,
+            'precisa_concluir_venda': False,
+            'status_venda': 'DISPONIVEL'
+        }), 200
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao cancelar reserva: {e}'}), 500
+
+    finally:
+        cur.close()
+
+
 
 @app.route('/excluir_carro/<int:id_veiculo>', methods=['DELETE'])
 def excluir_carro(id_veiculo):
@@ -510,8 +577,8 @@ def excluir_carro(id_veiculo):
             return jsonify({
                 'erro': 'Este veiculo ja possui venda cadastrada e nao pode ser excluido. Para manter o historico financeiro, altere o status do veiculo em vez de excluir.'
             }), 409
-        # Busca manutencoes vinculadas ao veiculo.
-        cur.execute(  # Consulta se o veiculo possui manutencoes.
+        
+        cur.execute(  
             """
             SELECT ID_MANUTENCAO, DATA_MANUTENCAO -- Seleciona o id da manutencao.
             FROM MANUTENCAO -- Define a tabela de manutencoes.
@@ -519,15 +586,15 @@ def excluir_carro(id_veiculo):
             """,
             (id_veiculo,)
         )
-        # Recupera todas as manutencoes do veiculo.
+       
         manutencoes = cur.fetchall()
-        # Bloqueia a exclusao quando houver manutencao agendada para o futuro.
+        
         for manutencao in manutencoes:
             if manutencao[1] > agora:
                 return jsonify({
                     'erro': 'Operação bloqueada: existe manutenção agendada no futuro para este veículo. Exclua o agendamento antes de excluir o carro.'
                 }), 409
-        # Exclui os itens e as manutencoes vinculadas ao veiculo.
+     
         for manutencao in manutencoes:
             id_manutencao = manutencao[0]
             # Exclui os itens da manutencao.
