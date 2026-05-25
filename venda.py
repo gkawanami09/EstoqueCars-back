@@ -1,4 +1,4 @@
-# Importa o objeto app do Flask e a conexao com o banco de dados.
+﻿# Importa o objeto app do Flask e a conexao com o banco de dados.
 from main import app, con
 
 # Importa jsonify para retornar JSON e request para ler dados enviados na requisicao.
@@ -376,6 +376,74 @@ def listar_vendas_usuario():
         cur.close()
 
 
+# Cria a rota para gerar novamente o PIX de uma venda a vista.
+@app.route('/pix_venda/<int:id_venda>', methods=['GET'])
+def pix_venda(id_venda):
+    cur = con.cursor()
+
+    try:
+        chave_pix = request.args.get('chave_pix')
+
+        cur.execute("""
+            SELECT CHAVE_PIX, NOME_EMPRESA
+            FROM CONFIGURACAO
+            WHERE ID_EMPRESA = 1
+        """)
+        config_pix = cur.fetchone()
+
+        if not chave_pix and config_pix:
+            chave_pix = config_pix[0]
+
+        nome_recebedor_pix = (
+            request.args.get('nome_recebedor_pix') or
+            (config_pix[1] if config_pix else None) or
+            app.config.get('PIX_NOME', 'ESTOQUE CARS')
+        )
+        cidade_recebedor_pix = request.args.get('cidade_recebedor_pix') or app.config.get('PIX_CIDADE', 'SAO PAULO')
+
+        if not chave_pix:
+            return jsonify({'erro': 'Chave PIX da empresa nao configurada.'}), 400
+
+        cur.execute("""
+            SELECT ID_VENDA,
+                   FORMA_PAGAMENTO,
+                   VALOR_RECEBIDO
+            FROM VENDA
+            WHERE ID_VENDA = ?
+        """, (id_venda,))
+        venda = cur.fetchone()
+
+        if not venda:
+            return jsonify({'erro': 'Venda nao encontrada.'}), 404
+
+        if int(venda[1] or 0) != 0:
+            return jsonify({'erro': 'Esta venda nao foi paga por Pix a vista.'}), 400
+
+        valor_recebido = float(venda[2] or 0)
+        txid_pix = f'VENDA{id_venda}'
+        pix_gerado = gerar_pix(
+            chave=chave_pix,
+            nome=nome_recebedor_pix,
+            cidade=cidade_recebedor_pix,
+            valor=valor_recebido,
+            pasta='pix',
+            txid=txid_pix
+        )
+
+        caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
+
+        return jsonify({
+            'id_venda': id_venda,
+            'pix_qrcode': f"/uploads/{caminho_pix.lstrip('/')}",
+            'pix_copia_cola': pix_gerado.get('payload')
+        }), 200
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao gerar Pix da venda: {e}'}), 500
+
+    finally:
+        cur.close()
+
 # Cria a rota para listar e gerar PIX das parcelas de uma venda.
 @app.route('/listar_pix_parcelas/<int:id_venda>', methods=['GET'])
 def listar_pix_parcelas(id_venda):
@@ -669,3 +737,4 @@ def atualizar_configuracoes():
 
     finally:
         cur.close()
+
