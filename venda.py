@@ -181,6 +181,11 @@ def cadastrar_venda():
             SET STATUS_ESTOQUE = 2
             WHERE ID_VEICULO = ?
         """, (id_veiculo,))
+        cur.execute("""
+            DELETE
+            FROM RESERVA_VEICULO
+            WHERE ID_VEICULO = ?
+        """, (id_veiculo,))
 
         pix_qrcode = None
         pix_copia_cola = None
@@ -227,7 +232,65 @@ def cadastrar_venda():
         return jsonify(resposta), 201
 
     except Exception as e:
+        con.rollback()
         return jsonify({'erro': f'Erro ao cadastrar venda: {e}'}), 500
+
+    finally:
+        cur.close()
+
+
+@app.route('/listar_pendencias_venda', methods=['GET'])
+def listar_pendencias_venda():
+    cur = con.cursor()
+
+    try:
+        cur.execute(
+            """
+            SELECT V.ID_VEICULO,
+                   V.MODELO,
+                   M.MARCA,
+                   V.PRECO,
+                   V.STATUS_ESTOQUE,
+                   RV.ID_USUARIO,
+                   U.NOME,
+                   RV.DATA_RESERVA
+            FROM RESERVA_VEICULO RV
+            INNER JOIN VEICULO V
+                ON V.ID_VEICULO = RV.ID_VEICULO
+            LEFT JOIN MARCA M
+                ON M.ID_MARCA = V.ID_MARCA
+            LEFT JOIN USUARIO U
+                ON U.ID_USUARIO = RV.ID_USUARIO
+            WHERE COALESCE(V.STATUS_ESTOQUE, 0) = 3
+            ORDER BY RV.DATA_RESERVA DESC
+            """
+        )
+
+        pendencias = []
+        for row in cur.fetchall():
+            nome_veiculo = ' '.join(
+                str(item or '').strip() for item in [row[2], row[1]] if str(item or '').strip()
+            )
+
+            pendencias.append({
+                'id_veiculo': row[0],
+                'modelo': row[1],
+                'marca': row[2],
+                'veiculo': nome_veiculo or row[1] or 'Veiculo',
+                'preco': float(row[3] or 0),
+                'status_estoque': row[4],
+                'id_usuario_reserva': row[5],
+                'nome_usuario_reserva': row[6],
+                'data_reserva': row[7].isoformat() if hasattr(row[7], 'isoformat') else str(row[7]),
+                'precisa_concluir_venda': True,
+                'status_venda': 'RESERVADO_PENDENTE_CONCLUSAO',
+                'mensagem_venda': 'Reservado: precisa concluir a venda.'
+            })
+
+        return jsonify({'pendencias_venda': pendencias}), 200
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao listar pendencias de venda: {e}'}), 500
 
     finally:
         cur.close()

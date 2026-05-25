@@ -361,11 +361,41 @@ def editar_carro(id_veiculo):
 def reservar_carro(id_veiculo):
     cur = con.cursor()
     try:
+        dados = request.get_json(silent=True) or request.form.to_dict() or {}
+        id_usuario = dados.get('id_usuario')
+
+        if id_usuario is None or (isinstance(id_usuario, str) and not id_usuario.strip()):
+            return jsonify({'erro': 'id_usuario e obrigatorio para reservar o veiculo.'}), 400
+
+        try:
+            id_usuario = int(id_usuario)
+        except (TypeError, ValueError):
+            return jsonify({'erro': 'id_usuario invalido.'}), 400
+
         cur.execute(
             """
-            SELECT ID_VEICULO, STATUS_ESTOQUE
-            FROM VEICULO
-            WHERE ID_VEICULO = ?
+            SELECT ID_USUARIO, NOME
+            FROM USUARIO
+            WHERE ID_USUARIO = ?
+            """,
+            (id_usuario,)
+        )
+        usuario = cur.fetchone()
+
+        if not usuario:
+            return jsonify({'erro': 'Cliente nao encontrado.'}), 404
+
+        nome_usuario = usuario[1]
+
+        cur.execute(
+            """
+            SELECT V.ID_VEICULO,
+                   V.STATUS_ESTOQUE,
+                   RV.ID_USUARIO
+            FROM VEICULO V
+            LEFT JOIN RESERVA_VEICULO RV
+              ON RV.ID_VEICULO = V.ID_VEICULO
+            WHERE V.ID_VEICULO = ?
             """,
             (id_veiculo,)
         )
@@ -374,13 +404,45 @@ def reservar_carro(id_veiculo):
         if not veiculo:
             return jsonify({'erro': 'Carro nao encontrado.'}), 404
 
-        status = str(veiculo[1] or '').strip()
+        status = int(veiculo[1] or 0)
+        id_usuario_reserva = veiculo[2]
 
-        if status == '2':
+        if status == 2:
             return jsonify({'erro': 'Este veiculo ja foi vendido.'}), 409
 
-        if status == '3':
-            return jsonify({'erro': 'Este veiculo ja esta reservado ou indisponivel.'}), 409
+        if id_usuario_reserva is not None:
+            if int(id_usuario_reserva) != id_usuario:
+                return jsonify({'erro': 'Este veiculo ja esta reservado para outro cliente.'}), 409
+
+            if status != 3:
+                cur.execute(
+                    """
+                    UPDATE VEICULO
+                    SET STATUS_ESTOQUE = 3
+                    WHERE ID_VEICULO = ?
+                    """,
+                    (id_veiculo,)
+                )
+
+            con.commit()
+            return jsonify({
+                'mensagem': 'Veiculo ja estava reservado para este cliente.',
+                'id_usuario_reserva': id_usuario,
+                'nome_usuario_reserva': nome_usuario,
+                'precisa_concluir_venda': True,
+                'status_venda': 'RESERVADO_PENDENTE_CONCLUSAO'
+            }), 200
+
+        if status != 1:
+            return jsonify({'erro': 'Este veiculo nao esta disponivel para reserva.'}), 409
+
+        cur.execute(
+            """
+            INSERT INTO RESERVA_VEICULO (ID_VEICULO, ID_USUARIO)
+            VALUES (?, ?)
+            """,
+            (id_veiculo, id_usuario)
+        )
 
         cur.execute(
             """
@@ -392,7 +454,13 @@ def reservar_carro(id_veiculo):
         )
         con.commit()
 
-        return jsonify({'mensagem': 'Veiculo reservado com sucesso!'}), 200
+        return jsonify({
+            'mensagem': 'Veiculo reservado com sucesso!',
+            'id_usuario_reserva': id_usuario,
+            'nome_usuario_reserva': nome_usuario,
+            'precisa_concluir_venda': True,
+            'status_venda': 'RESERVADO_PENDENTE_CONCLUSAO'
+        }), 200
 
     except jwt.ExpiredSignatureError:
         return jsonify({'erro': 'Sessao expirada. Faca login novamente.'}), 401
@@ -402,6 +470,9 @@ def reservar_carro(id_veiculo):
 
     except Exception as e:
         con.rollback()
+        mensagem = str(e).lower()
+        if 'pk_reserva_veiculo' in mensagem or 'primary or unique key' in mensagem:
+            return jsonify({'erro': 'Este veiculo acabou de ser reservado por outro cliente.'}), 409
         return jsonify({'erro': f'Erro ao reservar carro: {e}'}), 500
 
     finally:
@@ -552,14 +623,23 @@ def listar_carro():
                V.DESCRICAO, -- Seleciona a descricao.
                V.ESTADO_CONSERVACAO, -- Seleciona o estado de conservacao.
                V.STATUS_DOCUMENTO, -- Seleciona o status do documento.
-               V.STATUS_ESTOQUE, -- Seleciona o status do estoque.
+               CASE -- Garante status reservado quando houver reserva ativa.
+                   WHEN RV.ID_USUARIO IS NOT NULL
+                        AND COALESCE(V.STATUS_ESTOQUE, 0) <> 2
+                   THEN 3
+                   ELSE V.STATUS_ESTOQUE
+               END AS STATUS_ESTOQUE, -- Seleciona o status de estoque coerente.
                V.PLACA, -- Seleciona a placa.
                V.RENAVAM, -- Seleciona o RENAVAM.
-               C.NOME -- Seleciona o nome da categoria.
+               C.NOME, -- Seleciona o nome da categoria.
+               RV.ID_USUARIO, -- Seleciona o id do cliente que reservou.
+               U.NOME -- Seleciona o nome do cliente que reservou.
         FROM VEICULO V -- Define a tabela principal de veiculos.
                  INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA -- Junta o veiculo com sua marca.
                  INNER JOIN CATEGORIA C ON V.ID_CATEGORIA = C.ID_CATEGORIA -- Junta o veiculo com sua categoria.
-        WHERE 1=1 -- WHERE 1=1 é uma condição que sempre é verdadeira e não filtra nada.Ela é usada só para facilitar a montagem da query, permitindo adicionar vários AND depois sem precisar tratar qual é o primeiro filtro.
+                 LEFT JOIN RESERVA_VEICULO RV ON RV.ID_VEICULO = V.ID_VEICULO -- Junta reserva ativa do veiculo.
+                 LEFT JOIN USUARIO U ON U.ID_USUARIO = RV.ID_USUARIO -- Junta os dados do cliente que reservou.
+        WHERE 1=1 -- WHERE 1=1 e uma condicao que sempre e verdadeira e nao filtra nada.
     """
 
     # Cria a lista de valores usados nos filtros.
@@ -629,6 +709,21 @@ def listar_carro():
                 "placa": r[15],
                 "renavam": r[16],
                 "categoria": r[17],
+                "id_usuario_reserva": r[18],
+                "nome_usuario_reserva": r[19],
+                "precisa_concluir_venda": r[14] == 3 and r[18] is not None,
+                "status_venda": (
+                    "VENDIDO"
+                    if r[14] == 2
+                    else "RESERVADO_PENDENTE_CONCLUSAO"
+                    if (r[14] == 3 and r[18] is not None)
+                    else "DISPONIVEL"
+                ),
+                "mensagem_venda": (
+                    "Reservado: precisa concluir a venda."
+                    if (r[14] == 3 and r[18] is not None)
+                    else ""
+                ),
                 "imagem": f"/uploads/veico_{id_veiculo}.png"
             })
 
@@ -650,7 +745,6 @@ def listar_carro():
     finally:
         # Fecha o cursor do banco.
         cur.close()
-
 
 @app.route('/uploads/<path:nome_arquivo>')
 def uploads(nome_arquivo):
@@ -744,4 +838,5 @@ def buscar_categoria():
     finally:
         # Fecha o cursor do banco.
         cur.close()
+
 
