@@ -346,11 +346,23 @@ def pix_venda(id_venda):
 def listar_pix_parcelas(id_venda):
     cur = con.cursor()
     try:
-        chave_pix = request.args.get('chave_pix') or app.config.get('PIX_CHAVE')
-        nome_recebedor_pix = request.args.get('nome_recebedor_pix') or app.config.get('PIX_NOME', 'ESTOQUE CARS')
+        chave_pix = request.args.get('chave_pix')
+        cur.execute("""
+            SELECT CHAVE_PIX, NOME_EMPRESA
+            FROM CONFIGURACAO
+            WHERE ID_EMPRESA = 1
+        """)
+        config_pix = cur.fetchone()
+        if not chave_pix and config_pix:
+            chave_pix = config_pix[0]
+        nome_recebedor_pix = (
+            request.args.get('nome_recebedor_pix') or
+            (config_pix[1] if config_pix else None) or
+            app.config.get('PIX_NOME', 'ESTOQUE CARS')
+        )
         cidade_recebedor_pix = request.args.get('cidade_recebedor_pix') or app.config.get('PIX_CIDADE', 'SAO PAULO')
         if not chave_pix:
-            return jsonify({'erro': 'Chave PIX nao informada. Configure PIX_CHAVE no backend.'}), 400
+            return jsonify({'erro': 'Chave PIX da empresa nao configurada.'}), 400
         cur.execute("""
             SELECT P.ID_PARCELAMENTO,
                    P.ID_VENDA,
