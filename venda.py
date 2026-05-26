@@ -1,7 +1,9 @@
 ﻿from main import app, con
-from flask import jsonify, request
-import datetime, os
-from function import gerar_pix
+from flask import jsonify, request, render_template
+import datetime
+import os
+from function import gerar_pix, enviando_email
+import threading
 
 JUROS_PADRAO = 4
 
@@ -9,7 +11,13 @@ JUROS_PADRAO = 4
 def cadastrar_venda():
     cur = con.cursor()
     try:
-        dados = request.form.to_dict() if request.form else (request.get_json(silent=True) or {})
+        dados = {}
+        if request.form:
+            dados = request.form.to_dict()
+        else:
+            dados_json = request.get_json(silent=True)
+            if dados_json:
+                dados = dados_json
         id_usuario = dados.get('id_usuario')
         id_veiculo = dados.get('id_veiculo')
         forma_pagamento = dados.get('forma_pagamento')
@@ -20,16 +28,19 @@ def cadastrar_venda():
         comentarios = dados.get('comentarios')
         desconto = dados.get('desconto', 0)
         comprovante = request.files.get('comprovante')
-        campos_obrigatorios = [
-            id_usuario,
-            id_veiculo,
-            forma_pagamento,
-            data_venda,
-            valor_venda,
-            valor_recebido,
-            status_pagamento
-        ]
-        if any(campo is None or (isinstance(campo, str) and not campo.strip()) for campo in campos_obrigatorios):
+        if id_usuario is None or str(id_usuario).strip() == '':
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+        if id_veiculo is None or str(id_veiculo).strip() == '':
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+        if forma_pagamento is None or str(forma_pagamento).strip() == '':
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+        if data_venda is None or str(data_venda).strip() == '':
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+        if valor_venda is None or str(valor_venda).strip() == '':
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+        if valor_recebido is None or str(valor_recebido).strip() == '':
+            return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
+        if status_pagamento is None or str(status_pagamento).strip() == '':
             return jsonify({'erro': 'Todos os campos obrigatorios devem estar preenchidos'}), 400
         forma_pagamento = int(forma_pagamento)
         valor_venda = float(valor_venda)
@@ -41,13 +52,16 @@ def cadastrar_venda():
             return jsonify({'erro': 'O desconto deve ser maior ou igual a 0'}), 400
         data_venda = datetime.datetime.strptime(data_venda, '%d/%m/%Y %H:%M')
         cur.execute("""
-            SELECT ID_VEICULO, STATUS_ESTOQUE
+            SELECT ID_VEICULO, STATUS_ESTOQUE, MODELO
             FROM VEICULO
             WHERE ID_VEICULO = ?
         """, (id_veiculo,))
         veiculo = cur.fetchone()
         if not veiculo:
             return jsonify({'erro': 'Veiculo nao encontrado'}), 404
+        nome_veiculo_email = 'Veiculo'
+        if veiculo[2]:
+            nome_veiculo_email = veiculo[2]
         status_estoque = int(veiculo[1] or 0)
         if status_estoque == 2:
             return jsonify({'erro': 'Este veiculo ja foi vendido.'}), 400
@@ -65,11 +79,11 @@ def cadastrar_venda():
         nome_recebedor_pix = None
         cidade_recebedor_pix = None
         if forma_pagamento == 0:
-            chave_pix = (
-                dados.get('chave_pix') or
-                dados.get('chave_pix_empresa') or
-                dados.get('pix_chave')
-            )
+            chave_pix = dados.get('chave_pix')
+            if not chave_pix:
+                chave_pix = dados.get('chave_pix_empresa')
+            if not chave_pix:
+                chave_pix = dados.get('pix_chave')
             cur.execute("""
                 SELECT CHAVE_PIX, NOME_EMPRESA
                 FROM CONFIGURACAO
@@ -78,35 +92,71 @@ def cadastrar_venda():
             config_pix = cur.fetchone()
             if not chave_pix and config_pix:
                 chave_pix = config_pix[0]
-            nome_recebedor_pix = (
-                dados.get('nome_recebedor_pix') or
-                (config_pix[1] if config_pix else None) or
-                app.config.get('PIX_NOME', 'ESTOQUE CARS')
-            )
-            cidade_recebedor_pix = (
-                dados.get('cidade_recebedor_pix') or
-                app.config.get('PIX_CIDADE', 'SAO PAULO')
-            )
+            nome_recebedor_pix = dados.get('nome_recebedor_pix')
+            if not nome_recebedor_pix and config_pix:
+                nome_recebedor_pix = config_pix[1]
+            if not nome_recebedor_pix:
+                nome_recebedor_pix = app.config.get('PIX_NOME', 'ESTOQUE CARS')
+
+            cidade_recebedor_pix = dados.get('cidade_recebedor_pix')
+            if not cidade_recebedor_pix:
+                cidade_recebedor_pix = app.config.get('PIX_CIDADE', 'SAO PAULO')
             if not chave_pix:
                 return jsonify({'erro': 'Chave PIX da empresa nao configurada.'}), 400
+            
+            
         valor_parcela = None
         quantidade_parcelas = None
         valor_total_parcelado = None
+        
+        
         if forma_pagamento == 1:
-            if (
-                dados.get('valor_parcelado') is None or
-                (isinstance(dados.get('valor_parcelado'), str) and not dados.get('valor_parcelado').strip()) or
-                dados.get('quantidade_parcelas') is None or
-                (isinstance(dados.get('quantidade_parcelas'), str) and not dados.get('quantidade_parcelas').strip())
-            ):
+            valor_parcelado = dados.get('valor_parcelado')
+            quantidade_parcelas_dados = dados.get('quantidade_parcelas')
+
+            if valor_parcelado is None or str(valor_parcelado).strip() == '':
                 return jsonify({'erro': 'valor_parcelado e quantidade_parcelas sao obrigatorios para pagamento parcelado'}), 400
-            valor_parcela = float(dados.get('valor_parcelado'))
-            quantidade_parcelas = int(dados.get('quantidade_parcelas'))
+            
+            if quantidade_parcelas_dados is None or str(quantidade_parcelas_dados).strip() == '':
+                return jsonify({'erro': 'valor_parcelado e quantidade_parcelas sao obrigatorios para pagamento parcelado'}), 400
+
+            valor_parcela = float(valor_parcelado)
+            quantidade_parcelas = int(quantidade_parcelas_dados)
             valor_total_parcelado = valor_parcela * quantidade_parcelas
+            
+            
         if comprovante:
             nome_imagem = f'comprovante_{id_veiculo}.png'
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             comprovante.save(caminho_foto)
+            
+           
+        email_reserva = None
+        cur.execute("""
+        SELECT ID_USUARIO
+        FROM RESERVA_VEICULO
+        WHERE ID_VEICULO = ?
+                    """,
+        (id_veiculo,)
+        )
+        
+        reservaU = cur.fetchone()
+        
+        if reservaU:
+        
+            cur.execute("""
+            SELECT EMAIL
+            FROM USUARIO
+            WHERE ID_USUARIO = ?
+                        """,
+            (reservaU[0],)
+            )
+
+            email_usuario = cur.fetchone()
+            if email_usuario:
+                email_reserva = email_usuario[0]
+        
+            
         cur.execute("""
             INSERT INTO VENDA(
                 ID_USUARIO,
@@ -156,7 +206,9 @@ def cadastrar_venda():
                 txid=txid_pix
             )
             caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
-            pix_qrcode = f"/uploads/{caminho_pix.lstrip('/')}"
+            if caminho_pix and caminho_pix[0] == '/':
+                caminho_pix = caminho_pix[1:]
+            pix_qrcode = f"/uploads/{caminho_pix}"
             pix_copia_cola = pix_gerado.get('payload')
         if forma_pagamento == 1:
             cur.execute("""
@@ -168,6 +220,13 @@ def cadastrar_venda():
                 id_venda
             ))
         con.commit()
+
+        if email_reserva:
+            assunto = "Cancelamento de reserva - Estoque Cars"
+            template_html = render_template('email_reserva.html', veiculo=nome_veiculo_email)
+            thread = threading.Thread(target=enviando_email, args=(email_reserva, assunto, template_html))
+            thread.start()
+
         resposta = {
             'mensagem': 'Venda cadastrada com sucesso',
             'id_venda': id_venda
@@ -178,7 +237,6 @@ def cadastrar_venda():
             resposta['pix_copia_cola'] = pix_copia_cola
         return jsonify(resposta), 201
     except Exception as e:
-        con.rollback()
         return jsonify({'erro': f'Erro ao cadastrar venda: {e}'}), 500
     finally:
         cur.close()
@@ -209,20 +267,33 @@ def listar_pendencias_venda():
             """
         )
         pendencias = []
-        for row in cur.fetchall():
-            nome_veiculo = ' '.join(
-                str(item or '').strip() for item in [row[2], row[1]] if str(item or '').strip()
-            )
+        for registro in cur.fetchall():
+            nome_veiculo = ''
+            if registro[2]:
+                nome_veiculo = str(registro[2]).strip()
+            if registro[1]:
+                if nome_veiculo:
+                    nome_veiculo = f'{nome_veiculo} {str(registro[1]).strip()}'
+                else:
+                    nome_veiculo = str(registro[1]).strip()
+            if not nome_veiculo:
+                if registro[1]:
+                    nome_veiculo = registro[1]
+                else:
+                    nome_veiculo = 'Veiculo'
+
+            data_reserva = str(registro[7])
+
             pendencias.append({
-                'id_veiculo': row[0],
-                'modelo': row[1],
-                'marca': row[2],
-                'veiculo': nome_veiculo or row[1] or 'Veiculo',
-                'preco': float(row[3] or 0),
-                'status_estoque': row[4],
-                'id_usuario_reserva': row[5],
-                'nome_usuario_reserva': row[6],
-                'data_reserva': row[7].isoformat() if hasattr(row[7], 'isoformat') else str(row[7]),
+                'id_veiculo': registro[0],
+                'modelo': registro[1],
+                'marca': registro[2],
+                'veiculo': nome_veiculo,
+                'preco': float(registro[3] or 0),
+                'status_estoque': registro[4],
+                'id_usuario_reserva': registro[5],
+                'nome_usuario_reserva': registro[6],
+                'data_reserva': data_reserva,
                 'precisa_concluir_venda': True,
                 'status_venda': 'RESERVADO_PENDENTE_CONCLUSAO',
                 'mensagem_venda': 'Reservado: precisa concluir a venda.'
@@ -266,21 +337,36 @@ def listar_vendas_usuario():
             (id_usuario,)
         )
         vendas = []
-        for row in cur.fetchall():
-            nome_veiculo = ' '.join(str(item or '').strip() for item in [row[9], row[8]] if str(item or '').strip())
+        for registro in cur.fetchall():
+            nome_veiculo = ''
+            if registro[9]:
+                nome_veiculo = str(registro[9]).strip()
+            if registro[8]:
+                if nome_veiculo:
+                    nome_veiculo = f'{nome_veiculo} {str(registro[8]).strip()}'
+                else:
+                    nome_veiculo = str(registro[8]).strip()
+            if not nome_veiculo:
+                if registro[8]:
+                    nome_veiculo = registro[8]
+                else:
+                    nome_veiculo = 'Veiculo'
+
+            data_venda_formatada = str(registro[4])
+
             vendas.append({
-                'id_venda': row[0],
-                'id_usuario': row[1],
-                'id_veiculo': row[2],
-                'forma_pagamento': row[3],
-                'data_venda': row[4].isoformat() if hasattr(row[4], 'isoformat') else str(row[4]),
-                'valor_venda': float(row[5] or 0),
-                'valor_recebido': float(row[6] or 0),
-                'status_pagamento': row[7],
-                'modelo': row[8],
-                'marca': row[9],
-                'veiculo': nome_veiculo or row[8] or 'Veiculo',
-                'quantidade_parcelas': row[10]
+                'id_venda': registro[0],
+                'id_usuario': registro[1],
+                'id_veiculo': registro[2],
+                'forma_pagamento': registro[3],
+                'data_venda': data_venda_formatada,
+                'valor_venda': float(registro[5] or 0),
+                'valor_recebido': float(registro[6] or 0),
+                'status_pagamento': registro[7],
+                'modelo': registro[8],
+                'marca': registro[9],
+                'veiculo': nome_veiculo,
+                'quantidade_parcelas': registro[10]
             })
         return jsonify({'vendas': vendas}), 200
     except Exception as e:
@@ -301,12 +387,17 @@ def pix_venda(id_venda):
         config_pix = cur.fetchone()
         if not chave_pix and config_pix:
             chave_pix = config_pix[0]
-        nome_recebedor_pix = (
-            request.args.get('nome_recebedor_pix') or
-            (config_pix[1] if config_pix else None) or
-            app.config.get('PIX_NOME', 'ESTOQUE CARS')
-        )
-        cidade_recebedor_pix = request.args.get('cidade_recebedor_pix') or app.config.get('PIX_CIDADE', 'SAO PAULO')
+
+        nome_recebedor_pix = request.args.get('nome_recebedor_pix')
+        if not nome_recebedor_pix and config_pix:
+            nome_recebedor_pix = config_pix[1]
+        if not nome_recebedor_pix:
+            nome_recebedor_pix = app.config.get('PIX_NOME', 'ESTOQUE CARS')
+
+        cidade_recebedor_pix = request.args.get('cidade_recebedor_pix')
+        if not cidade_recebedor_pix:
+            cidade_recebedor_pix = app.config.get('PIX_CIDADE', 'SAO PAULO')
+
         if not chave_pix:
             return jsonify({'erro': 'Chave PIX da empresa nao configurada.'}), 400
         cur.execute("""
@@ -332,9 +423,11 @@ def pix_venda(id_venda):
             txid=txid_pix
         )
         caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
+        if caminho_pix and caminho_pix[0] == '/':
+            caminho_pix = caminho_pix[1:]
         return jsonify({
             'id_venda': id_venda,
-            'pix_qrcode': f"/uploads/{caminho_pix.lstrip('/')}",
+            'pix_qrcode': f"/uploads/{caminho_pix}",
             'pix_copia_cola': pix_gerado.get('payload')
         }), 200
     except Exception as e:
@@ -355,12 +448,17 @@ def listar_pix_parcelas(id_venda):
         config_pix = cur.fetchone()
         if not chave_pix and config_pix:
             chave_pix = config_pix[0]
-        nome_recebedor_pix = (
-            request.args.get('nome_recebedor_pix') or
-            (config_pix[1] if config_pix else None) or
-            app.config.get('PIX_NOME', 'ESTOQUE CARS')
-        )
-        cidade_recebedor_pix = request.args.get('cidade_recebedor_pix') or app.config.get('PIX_CIDADE', 'SAO PAULO')
+
+        nome_recebedor_pix = request.args.get('nome_recebedor_pix')
+        if not nome_recebedor_pix and config_pix:
+            nome_recebedor_pix = config_pix[1]
+        if not nome_recebedor_pix:
+            nome_recebedor_pix = app.config.get('PIX_NOME', 'ESTOQUE CARS')
+
+        cidade_recebedor_pix = request.args.get('cidade_recebedor_pix')
+        if not cidade_recebedor_pix:
+            cidade_recebedor_pix = app.config.get('PIX_CIDADE', 'SAO PAULO')
+
         if not chave_pix:
             return jsonify({'erro': 'Chave PIX da empresa nao configurada.'}), 400
         cur.execute("""
@@ -397,13 +495,24 @@ def listar_pix_parcelas(id_venda):
                 txid=txid_pix
             )
             caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
+            data_vencimento_formatada = str(data_vencimento)
+            data_vencimento_texto = data_vencimento_formatada.split(' ')[0]
+            if '-' in data_vencimento_texto:
+                partes_data = data_vencimento_texto.split('-')
+                if len(partes_data) == 3:
+                    ano = partes_data[0]
+                    mes = partes_data[1]
+                    dia = partes_data[2]
+                    data_vencimento_formatada = f'{dia}/{mes}/{ano}'
+            if caminho_pix and caminho_pix[0] == '/':
+                caminho_pix = caminho_pix[1:]
             parcelas.append({
                 'id_item_parcelamento': id_item_parcelamento,
                 'numero_parcela': numero_parcela,
                 'valor_parcela': valor_parcela,
-                'data_vencimento': data_vencimento.strftime('%d/%m/%Y') if hasattr(data_vencimento, 'strftime') else str(data_vencimento),
+                'data_vencimento': data_vencimento_formatada,
                 'situacao_parcela': situacao_parcela,
-                'pix_qrcode': f"/uploads/{caminho_pix.lstrip('/')}",
+                'pix_qrcode': f"/uploads/{caminho_pix}",
                 'pix_copia_cola': pix_gerado.get('payload')
             })
         return jsonify({'parcelas': parcelas}), 200
@@ -467,7 +576,6 @@ def pagar_parcela_pix(id_item_parcelamento):
             'parcelas_pendentes': parcelas_pendentes
         }), 200
     except Exception as e:
-        con.rollback()
         return jsonify({'erro': f'Erro ao pagar parcela: {e}'}), 500
     finally:
         cur.close()
@@ -518,8 +626,22 @@ def atualizar_configuracoes():
         cnpj = dados.get('cnpj')
         telefone = dados.get('telefone_empresa')
         email = dados.get('email_contato')
-        chave_pix = dados.get('chave_pix') or dados.get('chave_pix_empresa') or dados.get('pix_chave') or ''
-        taxa_juro = float(dados.get('taxa_juro') or dados.get('taxa_juros') or JUROS_PADRAO)
+
+        chave_pix = dados.get('chave_pix')
+        if not chave_pix:
+            chave_pix = dados.get('chave_pix_empresa')
+        if not chave_pix:
+            chave_pix = dados.get('pix_chave')
+        if not chave_pix:
+            chave_pix = ''
+
+        taxa_juro_dados = dados.get('taxa_juro')
+        if not taxa_juro_dados:
+            taxa_juro_dados = dados.get('taxa_juros')
+        if not taxa_juro_dados:
+            taxa_juro_dados = JUROS_PADRAO
+
+        taxa_juro = float(taxa_juro_dados)
         if taxa_juro < 0:
             return jsonify({'erro': 'A taxa de juros nao pode ser negativa'}), 400
         if taxa_juro == 0:

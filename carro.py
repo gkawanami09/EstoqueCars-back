@@ -1,9 +1,10 @@
-from main import app, con  # Importa a aplicacao Flask e a conexao com o banco.
+﻿from main import app, con  # Importa a aplicacao Flask e a conexao com o banco.
 from flask import request, jsonify, send_from_directory  # Importa recursos para requisicoes, JSON e arquivos.
 from validate_docbr import RENAVAM  # Importa o validador de RENAVAM.
 import jwt  # Importa a biblioteca usada para tratar erros de token JWT.
 import os  # Importa recursos para lidar com pastas e arquivos.
 import datetime
+senha_secreta = app.config['SECRET_KEY']
 
 
 # Verifica se a pasta de upload ainda nao existe.
@@ -906,4 +907,75 @@ def buscar_categoria():
         # Fecha o cursor do banco.
         cur.close()
 
+
+@app.route('/favoritar_carro/<int:id_veiculo>', methods=['POST'])
+def favoritar_carro(id_veiculo):
+    cur = con.cursor()
+    try:
+        token = request.cookies.get('access_token')
+        if not token:
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.lower().startswith('bearer '):
+                token = auth_header.split(' ', 1)[1].strip()
+
+        if not token:
+            return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
+
+        dados = jwt.decode(token, senha_secreta, algorithms=['HS256'])
+        id_usuario = dados['id_user']
+
+        cur.execute(
+            """
+            SELECT ID_VEICULO
+            FROM VEICULO
+            WHERE ID_VEICULO = ?
+            """,
+            (id_veiculo,)
+        )
+        resultado = cur.fetchone()
+
+        if not resultado:
+            return jsonify({"erro": "Veiculo não encontrado"}), 404
+
+        cur.execute(
+            """
+            SELECT ID_FAVORITO
+            FROM FAVORITO
+            WHERE ID_USUARIO = ? AND ID_VEICULO = ?
+            """,
+            (id_usuario, id_veiculo)
+        )
+        favorito = cur.fetchone()
+
+        if favorito:
+            cur.execute(
+                """
+                DELETE
+                FROM FAVORITO
+                WHERE ID_USUARIO = ? AND ID_VEICULO = ?
+                """,
+                (id_usuario, id_veiculo)
+            )
+            con.commit()
+            return jsonify({"mensagem": "Carro desfavoritado com sucesso!"}), 200
+
+        cur.execute(
+            """
+            INSERT INTO FAVORITO(ID_USUARIO, ID_VEICULO)
+            VALUES (?, ?)
+            """,
+            (id_usuario, id_veiculo)
+        )
+        con.commit()
+        return jsonify({'mensagem': 'Veículo favoritado com sucesso!'}), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
+    except Exception as e:
+        con.rollback()
+        return jsonify({"erro": f"Erro ao favoritar: {e}"}), 500
+    finally:
+        cur.close()
 
