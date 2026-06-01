@@ -1,4 +1,4 @@
-﻿from main import app, con
+from main import app, con
 from flask import jsonify, request, render_template
 import datetime
 import os
@@ -6,6 +6,68 @@ from function import gerar_pix, enviando_email
 import threading
 
 JUROS_PADRAO = 4
+
+@app.route('/gerar_pix_venda', methods=['POST'])
+def gerar_pix_venda():
+    cur = con.cursor()
+    try:
+        dados = request.get_json(silent=True) or {}
+        valor = dados.get('valor')
+        chave_pix = dados.get('chave_pix') or dados.get('chave_pix_empresa') or dados.get('pix_chave')
+        nome_recebedor_pix = dados.get('nome_recebedor_pix')
+        cidade_recebedor_pix = dados.get('cidade_recebedor_pix')
+        txid_pix = dados.get('txid') or 'VENDA'
+
+        if valor is None or str(valor).strip() == '':
+            return jsonify({'erro': 'Valor obrigatorio para gerar Pix.'}), 400
+
+        try:
+            valor_pix = float(valor)
+        except Exception:
+            return jsonify({'erro': 'Valor invalido para gerar Pix.'}), 400
+
+        if valor_pix <= 0:
+            return jsonify({'erro': 'Valor do Pix deve ser maior que zero.'}), 400
+
+        cur.execute("""
+            SELECT CHAVE_PIX, NOME_EMPRESA
+            FROM CONFIGURACAO
+            WHERE ID_EMPRESA = 1
+        """)
+        config_pix = cur.fetchone()
+
+        if not chave_pix and config_pix:
+            chave_pix = config_pix[0]
+        if not nome_recebedor_pix and config_pix:
+            nome_recebedor_pix = config_pix[1]
+        if not nome_recebedor_pix:
+            nome_recebedor_pix = app.config.get('PIX_NOME', 'ESTOQUE CARS')
+        if not cidade_recebedor_pix:
+            cidade_recebedor_pix = app.config.get('PIX_CIDADE', 'SAO PAULO')
+
+        if not chave_pix:
+            return jsonify({'erro': 'Chave PIX da empresa nao configurada.'}), 400
+
+        pix_gerado = gerar_pix(
+            chave=chave_pix,
+            nome=nome_recebedor_pix,
+            cidade=cidade_recebedor_pix,
+            valor=valor_pix,
+            pasta='pix',
+            txid=txid_pix
+        )
+        caminho_pix = str(pix_gerado.get('imagem', '')).replace('\\', '/')
+        if caminho_pix and caminho_pix[0] == '/':
+            caminho_pix = caminho_pix[1:]
+
+        return jsonify({
+            'pix_qrcode': f"/uploads/{caminho_pix}",
+            'pix_copia_cola': pix_gerado.get('payload')
+        }), 200
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao gerar Pix: {e}'}), 500
+    finally:
+        cur.close()
 
 @app.route('/cadastrar_venda', methods=['POST'])
 def cadastrar_venda():

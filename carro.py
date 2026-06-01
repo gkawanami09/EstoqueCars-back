@@ -1,9 +1,11 @@
 ﻿from main import app, con  # Importa a aplicacao Flask e a conexao com o banco.
-from flask import request, jsonify, send_from_directory  # Importa recursos para requisicoes, JSON e arquivos.
+from flask import request, jsonify, send_from_directory, render_template  # Importa recursos para requisicoes, JSON e arquivos.
 from validate_docbr import RENAVAM  # Importa o validador de RENAVAM.
 import jwt  # Importa a biblioteca usada para tratar erros de token JWT.
 import os  # Importa recursos para lidar com pastas e arquivos.
 import datetime
+import threading
+from function import enviando_email
 senha_secreta = app.config['SECRET_KEY']
 
 
@@ -392,10 +394,14 @@ def reservar_carro(id_veiculo):
             """
             SELECT V.ID_VEICULO,
                    V.STATUS_ESTOQUE,
-                   RV.ID_USUARIO
+                   RV.ID_USUARIO,
+                   V.MODELO,
+                   U.EMAIL
             FROM VEICULO V
             LEFT JOIN RESERVA_VEICULO RV
               ON RV.ID_VEICULO = V.ID_VEICULO
+            LEFT JOIN USUARIO U
+              ON U.ID_USUARIO = RV.ID_USUARIO
             WHERE V.ID_VEICULO = ?
             """,
             (id_veiculo,)
@@ -490,10 +496,14 @@ def cancelar_reserva_carro(id_veiculo):
             """
             SELECT V.ID_VEICULO,
                    V.STATUS_ESTOQUE,
-                   RV.ID_USUARIO
+                   RV.ID_USUARIO,
+                   V.MODELO,
+                   U.EMAIL
             FROM VEICULO V
             LEFT JOIN RESERVA_VEICULO RV
               ON RV.ID_VEICULO = V.ID_VEICULO
+            LEFT JOIN USUARIO U
+              ON U.ID_USUARIO = RV.ID_USUARIO
             WHERE V.ID_VEICULO = ?
             """,
             (id_veiculo,)
@@ -504,6 +514,8 @@ def cancelar_reserva_carro(id_veiculo):
             return jsonify({'erro': 'Carro não encontrado.'}), 404
 
         id_usuario_reserva = veiculo[2]
+        nome_veiculo_email = veiculo[3] if len(veiculo) > 3 and veiculo[3] else 'Veículo'
+        email_reserva = veiculo[4] if len(veiculo) > 4 else None
 
         if id_usuario_reserva is None:
             return jsonify({'erro': 'Este veículo não possui reserva ativa.'}), 404
@@ -530,6 +542,12 @@ def cancelar_reserva_carro(id_veiculo):
         )
 
         con.commit()
+
+        if email_reserva:
+            assunto = "Cancelamento de reserva - Estoque Cars"
+            template_html = render_template('email_reserva.html', veiculo=nome_veiculo_email)
+            thread = threading.Thread(target=enviando_email, args=(email_reserva, assunto, template_html))
+            thread.start()
 
         return jsonify({
             'mensagem': 'Reserva cancelada com sucesso.',
