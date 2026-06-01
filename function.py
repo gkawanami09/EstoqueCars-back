@@ -420,3 +420,100 @@ def filtros_financeiro():
         sql_where = " WHERE " + " AND ".join(where)
 
     return sql_where, params
+
+def descricao_com_veiculo(cur, descricao, id_veiculo):
+    if not id_veiculo:
+        return descricao
+
+    cur.execute(
+        """
+        SELECT M.MARCA,
+               V.MODELO,
+               V.PLACA
+        FROM VEICULO V
+        LEFT JOIN MARCA M
+            ON M.ID_MARCA = V.ID_MARCA
+        WHERE V.ID_VEICULO = ?
+        """,
+        (id_veiculo,)
+    )
+    veiculo = cur.fetchone()
+
+    if not veiculo:
+        return descricao
+
+    nome_veiculo = " ".join([str(valor).strip() for valor in veiculo[:2] if valor])
+    if veiculo[2]:
+        nome_veiculo = f"{nome_veiculo} - {str(veiculo[2]).strip()}" if nome_veiculo else str(veiculo[2]).strip()
+
+    if not nome_veiculo or nome_veiculo.lower() in descricao.lower():
+        return descricao
+
+    return f"{descricao} | Veículo: {nome_veiculo}"
+
+
+
+def nome_veiculo_por_id(cur, id_veiculo):
+    if not id_veiculo:
+        return ""
+
+    cur.execute(
+        """
+        SELECT M.MARCA,
+               V.MODELO,
+               V.PLACA
+        FROM VEICULO V
+        LEFT JOIN MARCA M
+            ON M.ID_MARCA = V.ID_MARCA
+        WHERE V.ID_VEICULO = ?
+        """,
+        (id_veiculo,)
+    )
+    veiculo = cur.fetchone()
+
+    if not veiculo:
+        return ""
+
+    nome = " ".join([str(valor).strip() for valor in veiculo[:2] if valor])
+    if veiculo[2]:
+        nome = f"{nome} - {str(veiculo[2]).strip()}" if nome else str(veiculo[2]).strip()
+
+    return nome
+
+
+def veiculo_da_transacao(cur, descricao):
+    texto = str(descricao or "")
+
+    if "| Veículo:" in texto:
+        return texto.split("| Veículo:", 1)[1].strip()
+
+    if "| Veículo:" in texto:
+        return texto.split("| Veículo:", 1)[1].strip()
+
+    if "| VeÃ­culo:" in texto:
+        return texto.split("| VeÃ­culo:", 1)[1].strip()
+
+    resultado = re.search(r"codigo da venda:\s*(\d+)", texto, re.IGNORECASE)
+    if not resultado:
+        return ""
+
+    cur.execute(
+        """
+        SELECT ID_VEICULO
+        FROM VENDA
+        WHERE ID_VENDA = ?
+        """,
+        (int(resultado.group(1)),)
+    )
+    venda = cur.fetchone()
+
+    if not venda:
+        return ""
+
+    return nome_veiculo_por_id(cur, venda[0])
+
+
+def montar_financeiro_com_veiculo(cur, registro):
+    transacao = montar_financeiro(registro)
+    transacao["veiculo"] = veiculo_da_transacao(cur, transacao.get("descricao"))
+    return transacao

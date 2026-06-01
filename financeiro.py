@@ -1,7 +1,8 @@
 from flask import jsonify, request
 from main import con, app
-import datetime
-from function import dados_requisicao, texto_tipo, filtros_financeiro, normalizar_tipo, montar_financeiro, normalizar_data
+import re
+from function import dados_requisicao, texto_tipo, filtros_financeiro, normalizar_tipo, normalizar_data, descricao_com_veiculo,montar_financeiro_com_veiculo
+
 
 
 
@@ -15,6 +16,7 @@ def cadastro_financeiro():
         tipo = normalizar_tipo(dados.get('tipo'))
         valor = dados.get('valor')
         data_financeiro = dados.get('data') or dados.get('data_financeiro')
+        id_veiculo = dados.get('id_veiculo')
 
         if not descricao:
             return jsonify({'erro': 'Descrição é obrigatória.'}), 400
@@ -31,6 +33,7 @@ def cadastro_financeiro():
             return jsonify({'erro': 'Valor deve ser maior que zero.'}), 400
 
         data_financeiro = normalizar_data(data_financeiro)
+        descricao = descricao_com_veiculo(cur, descricao, id_veiculo)
 
         cur.execute("SELECT COALESCE(MAX(ID_FINANCEIRO), 0) + 1 FROM FINANCEIRO")
         id_financeiro = cur.fetchone()[0]
@@ -93,7 +96,7 @@ def listar_financeiro():
             params
         )
 
-        transacoes = [montar_financeiro(registro) for registro in cur.fetchall()]
+        transacoes = [montar_financeiro_com_veiculo(cur, registro) for registro in cur.fetchall()]
         return jsonify({'transacoes': transacoes}), 200
     except Exception as e:
         return jsonify({'erro': f'Erro ao listar financeiro: {e}'}), 500
@@ -117,7 +120,7 @@ def listar_receitas():
             ORDER BY DATA_FINANCEIRO DESC, ID_FINANCEIRO DESC
             """
         )
-        return jsonify({'receitas': [montar_financeiro(registro) for registro in cur.fetchall()]}), 200
+        return jsonify({'receitas': [montar_financeiro_com_veiculo(cur, registro) for registro in cur.fetchall()]}), 200
     except Exception as e:
         return jsonify({'erro': f'Erro ao listar receitas: {e}'}), 500
     finally:
@@ -140,7 +143,7 @@ def listar_despesas():
             ORDER BY DATA_FINANCEIRO DESC, ID_FINANCEIRO DESC
             """
         )
-        return jsonify({'despesas': [montar_financeiro(registro) for registro in cur.fetchall()]}), 200
+        return jsonify({'despesas': [montar_financeiro_com_veiculo(cur, registro) for registro in cur.fetchall()]}), 200
     except Exception as e:
         return jsonify({'erro': f'Erro ao listar despesas: {e}'}), 500
     finally:
@@ -191,6 +194,7 @@ def editar_financeiro(id_financeiro):
         tipo = normalizar_tipo(dados.get('tipo'))
         valor = dados.get('valor')
         data_financeiro = dados.get('data') or dados.get('data_financeiro')
+        id_veiculo = dados.get('id_veiculo')
 
         if not descricao:
             return jsonify({'erro': 'Descrição é obrigatória.'}), 400
@@ -207,6 +211,7 @@ def editar_financeiro(id_financeiro):
             return jsonify({'erro': 'Valor deve ser maior que zero.'}), 400
 
         data_financeiro = normalizar_data(data_financeiro)
+        descricao = descricao_com_veiculo(cur, descricao, id_veiculo)
 
         cur.execute("SELECT ID_FINANCEIRO FROM FINANCEIRO WHERE ID_FINANCEIRO = ?", (id_financeiro,))
         if not cur.fetchone():
