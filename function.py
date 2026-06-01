@@ -337,3 +337,86 @@ def gerar_pix(
         "imagem": caminho_imagem,
         "payload": payload
     }
+def dados_requisicao():
+    if request.form:
+        return request.form.to_dict()
+    return request.get_json(silent=True) or {}
+
+
+def normalizar_tipo(valor):
+    tipo = str(valor or "").strip().lower()
+
+    if tipo in ["0", "entrada", "receita", "receitas"]:
+        return 0
+
+    if tipo in ["1", "saida", "saída", "despesa", "despesas"]:
+        return 1
+
+    return None
+
+
+def texto_tipo(tipo):
+    return "entrada" if int(tipo or 0) == 0 else "saida"
+
+
+def normalizar_data(valor):
+    if not valor:
+        return datetime.date.today()
+
+    texto = str(valor).strip()
+
+    for formato in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%Y %H:%M"):
+        try:
+            return datetime.datetime.strptime(texto, formato).date()
+        except ValueError:
+            pass
+
+    raise ValueError("Data inválida.")
+
+
+def montar_financeiro(registro):
+    return {
+        "id": registro[0],
+        "id_financeiro": registro[0],
+        "descricao": registro[1],
+        "tipo": texto_tipo(registro[2]),
+        "tipo_codigo": registro[2],
+        "data": str(registro[3]) if registro[3] else None,
+        "data_financeiro": str(registro[3]) if registro[3] else None,
+        "valor": float(registro[4] or 0)
+    }
+
+
+def filtros_financeiro():
+    tipo = normalizar_tipo(request.args.get("tipo"))
+    periodo = request.args.get("periodo")
+    data_inicio = request.args.get("data_inicio")
+    data_fim = request.args.get("data_fim")
+
+    where = []
+    params = []
+
+    if tipo is not None:
+        where.append("TIPO = ?")
+        params.append(tipo)
+
+    if periodo:
+        try:
+            dias = int(periodo)
+            data_inicio = datetime.date.today() - datetime.timedelta(days=dias)
+        except ValueError:
+            pass
+
+    if data_inicio:
+        where.append("DATA_FINANCEIRO >= ?")
+        params.append(normalizar_data(data_inicio))
+
+    if data_fim:
+        where.append("DATA_FINANCEIRO <= ?")
+        params.append(normalizar_data(data_fim))
+
+    sql_where = ""
+    if where:
+        sql_where = " WHERE " + " AND ".join(where)
+
+    return sql_where, params

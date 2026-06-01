@@ -9,6 +9,20 @@ from function import enviando_email
 senha_secreta = app.config['SECRET_KEY']
 
 
+def obter_id_usuario_token():
+    token = request.cookies.get('access_token')
+    if not token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+
+    if not token:
+        return None
+
+    dados = jwt.decode(token, senha_secreta, algorithms=['HS256'])
+    return dados.get('id_user') or dados.get('id_usuario') or dados.get('id')
+
+
 # Verifica se a pasta de upload ainda nao existe.
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     # Cria a pasta onde as imagens dos veiculos serao salvas.
@@ -760,11 +774,24 @@ def listar_carro():
         filtros.append(ano)
 
     try:
+        id_usuario_logado = obter_id_usuario_token()
         # Executa a consulta montada com os filtros.
         cur.execute(query, tuple(filtros))  # Busca os carros conforme os filtros informados.
 
         # Recupera os veiculos encontrados.
         rows = cur.fetchall()
+
+        ids_favoritos = set()
+        if id_usuario_logado:
+            cur.execute(
+                """
+                SELECT ID_VEICULO
+                FROM FAVORITO
+                WHERE ID_USUARIO = ?
+                """,
+                (id_usuario_logado,)
+            )
+            ids_favoritos = {linha[0] for linha in cur.fetchall()}
 
         # Cria a lista final de carros.
         carros = []
@@ -810,6 +837,7 @@ def listar_carro():
                     if (r[14] == 3 and r[18] is not None)
                     else ""
                 ),
+                "favorito": id_veiculo in ids_favoritos,
                 "imagem": f"/uploads/veico_{id_veiculo}.png"
             })
 
@@ -997,3 +1025,115 @@ def favoritar_carro(id_veiculo):
     finally:
         cur.close()
 
+
+@app.route('/listar_favoritos', methods=['GET'])
+def listar_favoritos():
+    cur = con.cursor()
+    try:
+        id_usuario = obter_id_usuario_token()
+
+        if not id_usuario:
+            return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
+
+        cur.execute(
+            """
+            SELECT V.ID_VEICULO,
+                   V.ID_CATEGORIA,
+                   V.ID_MARCA,
+                   M.MARCA,
+                   V.MODELO,
+                   V.ANO_FABRICACAO,
+                   V.ANO_MODELO,
+                   V.QUILOMETRAGEM,
+                   V.COR,
+                   V.CAMBIO,
+                   V.PRECO,
+                   V.DESCRICAO,
+                   V.ESTADO_CONSERVACAO,
+                   V.STATUS_DOCUMENTO,
+                   V.STATUS_ESTOQUE,
+                   V.PLACA,
+                   V.RENAVAM,
+                   C.NOME,
+                   F.ID_FAVORITO
+            FROM FAVORITO F
+            INNER JOIN VEICULO V ON V.ID_VEICULO = F.ID_VEICULO
+            INNER JOIN MARCA M ON V.ID_MARCA = M.ID_MARCA
+            INNER JOIN CATEGORIA C ON V.ID_CATEGORIA = C.ID_CATEGORIA
+            WHERE F.ID_USUARIO = ?
+            ORDER BY F.ID_FAVORITO DESC
+            """,
+            (id_usuario,)
+        )
+
+        favoritos = []
+        for r in cur.fetchall():
+            id_veiculo = r[0]
+            favoritos.append({
+                "id": id_veiculo,
+                "id_veiculo": id_veiculo,
+                "id_categoria": r[1],
+                "id_marca": r[2],
+                "marca": r[3],
+                "nome": f"{r[3]} {r[4]}",
+                "modelo": r[4],
+                "ano_fabricacao": r[5],
+                "ano_modelo": r[6],
+                "quilometragem": r[7],
+                "cor": r[8],
+                "cambio": r[9],
+                "preco": float(r[10] or 0),
+                "descricao": r[11],
+                "estado_conservacao": r[12],
+                "status_documento": r[13],
+                "status_estoque": r[14],
+                "placa": r[15],
+                "renavam": r[16],
+                "categoria": r[17],
+                "id_favorito": r[18],
+                "favorito": True,
+                "imagem": f"/uploads/veico_{id_veiculo}.png"
+            })
+
+        return jsonify({"favoritos": favoritos}), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
+    except Exception as e:
+        return jsonify({"erro": f"Erro ao listar favoritos: {e}"}), 500
+    finally:
+        cur.close()
+
+
+@app.route('/limpar_favoritos', methods=['DELETE'])
+def limpar_favoritos():
+    cur = con.cursor()
+    try:
+        id_usuario = obter_id_usuario_token()
+
+        if not id_usuario:
+            return jsonify({'erro': 'Acesso negado. Token não encontrado.'}), 401
+
+        cur.execute(
+            """
+            DELETE
+            FROM FAVORITO
+            WHERE ID_USUARIO = ?
+            """,
+            (id_usuario,)
+        )
+        con.commit()
+
+        return jsonify({'mensagem': 'Favoritos removidos com sucesso.'}), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
+    except Exception as e:
+        con.rollback()
+        return jsonify({"erro": f"Erro ao limpar favoritos: {e}"}), 500
+    finally:
+        cur.close()

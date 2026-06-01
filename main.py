@@ -29,6 +29,7 @@ import marca
 import servico
 import manutencao
 import venda
+import financeiro
 from view import *
 
 if __name__ == '__main__':

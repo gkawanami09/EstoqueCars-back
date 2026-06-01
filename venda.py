@@ -281,6 +281,34 @@ def cadastrar_venda():
                 valor_total_parcelado,
                 id_venda
             ))
+
+        if int(status_pagamento) == 0:
+            descricao_financeiro = f'Venda de veiculo - codigo da venda: {id_venda}'
+            cur.execute(
+                """
+                SELECT ID_FINANCEIRO
+                FROM FINANCEIRO
+                WHERE DESCRICAO = ?
+                """,
+                (descricao_financeiro,)
+            )
+
+            if not cur.fetchone():
+                cur.execute("SELECT COALESCE(MAX(ID_FINANCEIRO), 0) + 1 FROM FINANCEIRO")
+                id_financeiro = cur.fetchone()[0]
+                cur.execute(
+                    """
+                    INSERT INTO FINANCEIRO(
+                        ID_FINANCEIRO,
+                        DESCRICAO,
+                        TIPO,
+                        DATA_FINANCEIRO,
+                        VALOR
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (id_financeiro, descricao_financeiro, 0, data_venda.date(), valor_recebido)
+                )
         con.commit()
 
         if email_reserva:
