@@ -1,4 +1,4 @@
-﻿from main import app, con  # Importa a aplicacao Flask e a conexao com o banco.
+from main import app, con  # Importa a aplicacao Flask e a conexao com o banco.
 from flask import request, jsonify, send_from_directory, render_template  # Importa recursos para requisicoes, JSON e arquivos.
 from validate_docbr import RENAVAM  # Importa o validador de RENAVAM.
 import jwt  # Importa a biblioteca usada para tratar erros de token JWT.
@@ -95,7 +95,7 @@ def cadastrar_carro():
 
         # Verifica se os campos obrigatorios foram preenchidos.
         if not all([id_categoria, id_marca, modelo, ano_fabricacao, ano_modelo, preco, placa]):
-            return jsonify({'erro': 'Preencha todos os campos obrigatrios.'}), 400
+            return jsonify({'erro': 'Preencha todos os campos obrigatórios.'}), 400
 
         # Imprime uma marcacao simples no terminal.
         print('renavam')
@@ -131,7 +131,7 @@ def cadastrar_carro():
 
             # Retorna erro quando o RENAVAM ja existe.
             if conflito[1] == renavam:
-                return jsonify({'erro': 'Renavam já cadastrado'}), 409
+                return jsonify({'erro': 'RENAVAM já cadastrado'}), 409
 
         # Insere o novo veiculo no banco.
         cur.execute(  # Cadastra o veiculo e retorna o id gerado.
@@ -184,7 +184,7 @@ def cadastrar_carro():
         con.commit()
 
         # Retorna sucesso do cadastro.
-        return jsonify({'mensagem': 'Carro cadastrado com sucesso!'}), 201
+        return jsonify({'mensagem': 'Veículo cadastrado com sucesso!'}), 201
 
     except jwt.ExpiredSignatureError:
         # Retorna erro quando o token expirou.
@@ -224,7 +224,7 @@ def editar_carro(id_veiculo):
 
         # Retorna erro se o veiculo nao existir.
         if not cur.fetchone():
-            return jsonify({'erro': 'Carro não encontrado.'}), 404
+            return jsonify({'erro': 'Veículo não encontrado.'}), 404
 
         # Recupera o id da categoria enviado pelo formulario.
         id_categoria = request.form.get('id_categoria')
@@ -310,7 +310,7 @@ def editar_carro(id_veiculo):
 
             # Retorna erro quando o RENAVAM ja existe em outro veiculo.
             if conflito[1] == renavam:
-                return jsonify({'erro': 'Renavam já cadastrado em outro veículo.'}), 409
+                return jsonify({'erro': 'RENAVAM já cadastrado em outro veículo.'}), 409
 
         # Atualiza os dados do veiculo.
         cur.execute(  # Atualiza o veiculo pelo id informado.
@@ -356,7 +356,7 @@ def editar_carro(id_veiculo):
         con.commit()
 
         # Retorna sucesso da edicao.
-        return jsonify({'mensagem': 'Carro atualizado com sucesso!'}), 200
+        return jsonify({'mensagem': 'Veículo atualizado com sucesso!'}), 200
 
     except jwt.ExpiredSignatureError:
         # Retorna erro quando o token expirou.
@@ -423,7 +423,7 @@ def reservar_carro(id_veiculo):
         veiculo = cur.fetchone()
 
         if not veiculo:
-            return jsonify({'erro': 'Carro não encontrado.'}), 404
+            return jsonify({'erro': 'Veículo não encontrado.'}), 404
 
         status = int(veiculo[1] or 0)
         id_usuario_reserva = veiculo[2]
@@ -525,7 +525,7 @@ def cancelar_reserva_carro(id_veiculo):
         veiculo = cur.fetchone()
 
         if not veiculo:
-            return jsonify({'erro': 'Carro não encontrado.'}), 404
+            return jsonify({'erro': 'Veículo não encontrado.'}), 404
 
         id_usuario_reserva = veiculo[2]
         nome_veiculo_email = veiculo[3] if len(veiculo) > 3 and veiculo[3] else 'Veículo'
@@ -535,7 +535,7 @@ def cancelar_reserva_carro(id_veiculo):
             return jsonify({'erro': 'Este veículo não possui reserva ativa.'}), 404
 
         if id_usuario is not None and str(id_usuario).strip() and int(id_usuario_reserva) != int(id_usuario):
-            return jsonify({'erro': 'Está reserva pertence a outro cliente.'}), 403
+            return jsonify({'erro': 'Esta reserva pertence a outro cliente.'}), 403
 
         cur.execute(
             """
@@ -596,21 +596,17 @@ def excluir_carro(id_veiculo):
         )
         # Retorna erro quando o veiculo nao existe.
         if not cur.fetchone():
-            return jsonify({'erro': 'Carro não encontrado.'}), 404
-        # Bloqueia a exclusao quando ja existe venda vinculada ao veiculo.
+            return jsonify({'erro': 'Veículo não encontrado.'}), 404
+        # Busca vendas vinculadas para remover dependencias antes de excluir o veiculo.
         cur.execute(
             """
-            SELECT FIRST 1 ID_VENDA
+            SELECT ID_VENDA
             FROM VENDA
             WHERE ID_VEICULO = ?
             """,
             (id_veiculo,)
         )
-        if cur.fetchone():
-            return jsonify({
-                'erro': 'Este veiculo ja possui venda cadastrada e nao pode ser excluido. Para manter o historico financeiro, altere o status do veiculo em vez de excluir.'
-            }), 409
-        
+        ids_vendas = [linha[0] for linha in cur.fetchall()]
         cur.execute(  
             """
             SELECT ID_MANUTENCAO, DATA_MANUTENCAO -- Seleciona o id da manutencao.
@@ -648,6 +644,38 @@ def excluir_carro(id_veiculo):
                 """,
                 (id_manutencao,)
             )
+        # Remove favoritos e reservas ligados ao veiculo.
+        cur.execute("DELETE FROM FAVORITO WHERE ID_VEICULO = ?", (id_veiculo,))
+        cur.execute("DELETE FROM RESERVA_VEICULO WHERE ID_VEICULO = ?", (id_veiculo,))
+
+        # Remove registros financeiros e de estoque ligados as vendas do veiculo.
+        for id_venda in ids_vendas:
+            cur.execute(
+                """
+                SELECT ID_PARCELAMENTO
+                FROM PARCELAMENTO
+                WHERE ID_VENDA = ?
+                """,
+                (id_venda,)
+            )
+            ids_parcelamentos = [linha[0] for linha in cur.fetchall()]
+
+            for id_parcelamento in ids_parcelamentos:
+                cur.execute("DELETE FROM ITEM_PARCELAMENTO WHERE ID_PARCELAMENTO = ?", (id_parcelamento,))
+
+            cur.execute("DELETE FROM PARCELAMENTO WHERE ID_VENDA = ?", (id_venda,))
+            cur.execute("DELETE FROM MOVIMENTACAO_ESTOQUE WHERE ID_VENDA = ?", (id_venda,))
+            cur.execute("DELETE FROM TRANSACOES_FINANCEIRAS WHERE ID_VENDA = ?", (id_venda,))
+            cur.execute(
+                """
+                DELETE FROM FINANCEIRO
+                WHERE DESCRICAO = ?
+                """,
+                (f'Venda de veiculo - codigo da venda: {id_venda}',)
+            )
+            cur.execute("DELETE FROM VENDA WHERE ID_VENDA = ?", (id_venda,))
+
+        cur.execute("DELETE FROM TRANSACOES_FINANCEIRAS WHERE ID_VEICULO = ?", (id_veiculo,))
         # Exclui o veiculo do banco.
         cur.execute(  # Remove o veiculo pelo id informado.
             """
@@ -668,7 +696,7 @@ def excluir_carro(id_veiculo):
             # Remove a imagem do veiculo excluido.
             os.remove(caminho_foto)
         # Retorna sucesso da exclusao.
-        return jsonify({'mensagem': 'Carro excluído com sucesso!'}), 200
+        return jsonify({'mensagem': 'Veículo excluído com sucesso!'}), 200
     except jwt.ExpiredSignatureError:
         # Retorna erro quando o token expirou.
         return jsonify({'erro': 'Sessão expirada. Faça login novamente.'}), 401
@@ -681,7 +709,7 @@ def excluir_carro(id_veiculo):
         mensagem = str(e).lower()
         if 'fk_vendas_veiculo' in mensagem or 'foreign key' in mensagem:
             return jsonify({
-                'erro': 'Este veiculo ja possui venda cadastrada e nao pode ser excluido. Para manter o historico financeiro, altere o status do veiculo em vez de excluir.'
+                'erro': 'Este veículo já possui venda cadastrada e não pode ser excluído. Para manter o histórico financeiro, altere o status do veículo em vez de excluir.'
             }), 409
         # Retorna erro interno com detalhes.
         return jsonify({'erro': f'Erro ao excluir carro {e}'}), 500
@@ -981,7 +1009,7 @@ def favoritar_carro(id_veiculo):
         resultado = cur.fetchone()
 
         if not resultado:
-            return jsonify({"erro": "Veiculo não encontrado"}), 404
+            return jsonify({"erro": "Veículo não encontrado"}), 404
 
         cur.execute(
             """

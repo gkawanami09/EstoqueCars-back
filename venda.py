@@ -294,20 +294,17 @@ def cadastrar_venda():
             )
 
             if not cur.fetchone():
-                cur.execute("SELECT COALESCE(MAX(ID_FINANCEIRO), 0) + 1 FROM FINANCEIRO")
-                id_financeiro = cur.fetchone()[0]
                 cur.execute(
                     """
                     INSERT INTO FINANCEIRO(
-                        ID_FINANCEIRO,
                         DESCRICAO,
                         TIPO,
                         DATA_FINANCEIRO,
                         VALOR
                     )
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?)
                     """,
-                    (id_financeiro, descricao_financeiro, 0, data_venda.date(), valor_recebido)
+                    (descricao_financeiro, 0, data_venda.date(), valor_recebido)
                 )
         con.commit()
 

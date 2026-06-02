@@ -71,26 +71,23 @@ def cadastro_financeiro():
         # Complementa a descrição com dados do veículo, se um id_veiculo foi informado.
         descricao = descricao_com_veiculo(cur, descricao, id_veiculo)
 
-        # Busca o próximo ID financeiro usando o maior ID atual mais 1.
-        cur.execute("SELECT COALESCE(MAX(ID_FINANCEIRO), 0) + 1 FROM FINANCEIRO")
-
-        # Recupera o ID calculado pela consulta anterior.
-        id_financeiro = cur.fetchone()[0]
-
-        # Insere a nova transação financeira no banco de dados.
+        # Insere a nova transacao financeira no banco de dados.
         cur.execute(
             """
             INSERT INTO FINANCEIRO(
-                ID_FINANCEIRO,
                 DESCRICAO,
                 TIPO,
                 DATA_FINANCEIRO,
                 VALOR
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?)
+            RETURNING ID_FINANCEIRO
             """,
-            (id_financeiro, descricao, tipo, data_financeiro, valor)
+            (descricao, tipo, data_financeiro, valor)
         )
+
+        # Recupera o ID gerado automaticamente pelo banco.
+        id_financeiro = cur.fetchone()[0]
 
         # Confirma a gravação da transação no banco.
         con.commit()
