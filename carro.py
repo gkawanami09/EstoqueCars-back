@@ -1020,7 +1020,6 @@ def favoritar_carro(id_veiculo):
     except jwt.InvalidTokenError:
         return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
     except Exception as e:
-        con.rollback()
         return jsonify({"erro": f"Erro ao favoritar: {e}"}), 500
     finally:
         cur.close()
@@ -1133,7 +1132,6 @@ def limpar_favoritos():
     except jwt.InvalidTokenError:
         return jsonify({'erro': 'Token inválido ou adulterado.'}), 401
     except Exception as e:
-        con.rollback()
         return jsonify({"erro": f"Erro ao limpar favoritos: {e}"}), 500
     finally:
         cur.close()
