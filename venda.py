@@ -7,6 +7,39 @@ import threading
 
 JUROS_PADRAO = 4
 
+
+def registrar_receita_venda(cur, id_venda, descricao, valor, data_financeiro):
+    if valor is None or float(valor or 0) <= 0:
+        return None
+
+    cur.execute(
+        """
+        SELECT ID_FINANCEIRO
+        FROM FINANCEIRO
+        WHERE DESCRICAO = ?
+        """,
+        (descricao,)
+    )
+    financeiro_existente = cur.fetchone()
+
+    if financeiro_existente:
+        return financeiro_existente[0]
+
+    cur.execute(
+        """
+        INSERT INTO FINANCEIRO(
+            DESCRICAO,
+            TIPO,
+            DATA_FINANCEIRO,
+            VALOR
+        )
+        VALUES (?, ?, ?, ?)
+        RETURNING ID_FINANCEIRO
+        """,
+        (descricao, 0, data_financeiro, float(valor or 0))
+    )
+    return cur.fetchone()[0]
+
 @app.route('/gerar_pix_venda', methods=['POST'])
 def gerar_pix_venda():
     cur = con.cursor()
@@ -284,28 +317,7 @@ def cadastrar_venda():
 
         if int(status_pagamento) == 0:
             descricao_financeiro = f'Venda de veiculo - codigo da venda: {id_venda}'
-            cur.execute(
-                """
-                SELECT ID_FINANCEIRO
-                FROM FINANCEIRO
-                WHERE DESCRICAO = ?
-                """,
-                (descricao_financeiro,)
-            )
-
-            if not cur.fetchone():
-                cur.execute(
-                    """
-                    INSERT INTO FINANCEIRO(
-                        DESCRICAO,
-                        TIPO,
-                        DATA_FINANCEIRO,
-                        VALOR
-                    )
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (descricao_financeiro, 0, data_venda.date(), valor_recebido)
-                )
+            registrar_receita_venda(cur, id_venda, descricao_financeiro, valor_recebido, data_venda.date())
         con.commit()
 
         if email_reserva:
@@ -327,6 +339,68 @@ def cadastrar_venda():
         return jsonify({'erro': f'Erro ao cadastrar venda: {e}'}), 500
     finally:
         cur.close()
+
+
+@app.route('/confirmar_pagamento_pix_venda/<int:id_venda>', methods=['POST', 'PUT'])
+@app.route('/pagar_venda_pix/<int:id_venda>', methods=['POST', 'PUT'])
+@app.route('/confirmar_pagamento_venda/<int:id_venda>', methods=['POST', 'PUT'])
+@app.route('/atualizar_status_pagamento_venda/<int:id_venda>', methods=['POST', 'PUT'])
+def confirmar_pagamento_venda(id_venda):
+    cur = con.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT ID_VENDA,
+                   ID_VEICULO,
+                   DATA_VENDA,
+                   VALOR_RECEBIDO,
+                   VALOR_VENDA,
+                   STATUS_PAGAMENTO
+            FROM VENDA
+            WHERE ID_VENDA = ?
+            """,
+            (id_venda,)
+        )
+        venda = cur.fetchone()
+
+        if not venda:
+            return jsonify({'erro': 'Venda nao encontrada.'}), 404
+
+        valor_receita = float(venda[3] or venda[4] or 0)
+
+        cur.execute(
+            """
+            UPDATE VENDA
+            SET STATUS_PAGAMENTO = 0
+            WHERE ID_VENDA = ?
+            """,
+            (id_venda,)
+        )
+
+        descricao_financeiro = f'Venda de veiculo - codigo da venda: {id_venda}'
+        id_financeiro = registrar_receita_venda(
+            cur,
+            id_venda,
+            descricao_financeiro,
+            valor_receita,
+            venda[2] or datetime.date.today()
+        )
+
+        con.commit()
+
+        return jsonify({
+            'mensagem': 'Pagamento confirmado e receita registrada.',
+            'id_venda': id_venda,
+            'status_pagamento': 0,
+            'receita_registrada': True,
+            'id_financeiro': id_financeiro
+        }), 200
+    except Exception as e:
+        con.rollback()
+        return jsonify({'erro': f'Erro ao confirmar pagamento da venda: {e}'}), 500
+    finally:
+        cur.close()
+
 
 @app.route('/listar_pendencias_venda', methods=['GET'])
 def listar_pendencias_venda():
@@ -425,6 +499,25 @@ def listar_vendas_usuario():
         )
         vendas = []
         for registro in cur.fetchall():
+            status_pagamento = registro[7]
+
+            if int(registro[3] or 0) == 1 and registro[10]:
+                cur.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM PARCELAMENTO P
+                    INNER JOIN ITEM_PARCELAMENTO I
+                        ON I.ID_PARCELAMENTO = P.ID_PARCELAMENTO
+                    WHERE P.ID_VENDA = ?
+                      AND COALESCE(I.SITUACAO_PARCELA, 0) <> 1
+                    """,
+                    (registro[0],)
+                )
+                parcelas_pendentes = cur.fetchone()[0]
+
+                if parcelas_pendentes == 0:
+                    status_pagamento = 0
+
             nome_veiculo = ''
             if registro[9]:
                 nome_veiculo = str(registro[9]).strip()
@@ -449,7 +542,7 @@ def listar_vendas_usuario():
                 'data_venda': data_venda_formatada,
                 'valor_venda': float(registro[5] or 0),
                 'valor_recebido': float(registro[6] or 0),
-                'status_pagamento': registro[7],
+                'status_pagamento': status_pagamento,
                 'modelo': registro[8],
                 'marca': registro[9],
                 'veiculo': nome_veiculo,
@@ -615,10 +708,15 @@ def pagar_parcela_pix(id_item_parcelamento):
         cur.execute("""
             SELECT I.ID_PARCELAMENTO,
                    I.SITUACAO_PARCELA,
-                   P.ID_VENDA
+                   P.ID_VENDA,
+                   I.NUMERO_PARCELA,
+                   I.VALOR_PARCELA,
+                   V.ID_VEICULO
             FROM ITEM_PARCELAMENTO I
             INNER JOIN PARCELAMENTO P
                 ON P.ID_PARCELAMENTO = I.ID_PARCELAMENTO
+            INNER JOIN VENDA V
+                ON V.ID_VENDA = P.ID_VENDA
             WHERE I.ID_ITEM_PARCELAMENTO = ?
         """, (id_item_parcelamento,))
         parcela = cur.fetchone()
@@ -627,12 +725,22 @@ def pagar_parcela_pix(id_item_parcelamento):
         id_parcelamento = parcela[0]
         situacao_parcela = parcela[1]
         id_venda = parcela[2]
+        numero_parcela = parcela[3]
+        valor_parcela = float(parcela[4] or 0)
         if int(situacao_parcela or 0) != 1:
             cur.execute("""
                 UPDATE ITEM_PARCELAMENTO
                 SET SITUACAO_PARCELA = 1
                 WHERE ID_ITEM_PARCELAMENTO = ?
             """, (id_item_parcelamento,))
+        descricao_financeiro = f'Receita automatica - Venda #{id_venda} - Parcela {numero_parcela or "-"}'
+        id_financeiro = registrar_receita_venda(
+            cur,
+            id_venda,
+            descricao_financeiro,
+            valor_parcela,
+            datetime.date.today()
+        )
         cur.execute("""
             SELECT COUNT(*)
             FROM ITEM_PARCELAMENTO
@@ -660,9 +768,12 @@ def pagar_parcela_pix(id_item_parcelamento):
             'situacao_parcela': 1,
             'parcela_paga': True,
             'compra_quitada': compra_quitada,
-            'parcelas_pendentes': parcelas_pendentes
+            'parcelas_pendentes': parcelas_pendentes,
+            'receita_registrada': True,
+            'id_financeiro': id_financeiro
         }), 200
     except Exception as e:
+        con.rollback()
         return jsonify({'erro': f'Erro ao pagar parcela: {e}'}), 500
     finally:
         cur.close()

@@ -23,6 +23,16 @@ def obter_id_usuario_token():
     return dados.get('id_user') or dados.get('id_usuario') or dados.get('id')
 
 
+def data_upload_veiculo(id_veiculo):
+    nome_imagem = f'veico_{id_veiculo}.png'
+    caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+
+    if not os.path.isfile(caminho_foto):
+        return None
+
+    return datetime.datetime.fromtimestamp(os.path.getmtime(caminho_foto)).strftime('%Y-%m-%d')
+
+
 # Verifica se a pasta de upload ainda nao existe.
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     # Cria a pasta onde as imagens dos veiculos serao salvas.
@@ -852,6 +862,7 @@ def listar_carro():
                 "categoria": r[17],
                 "id_usuario_reserva": r[18],
                 "nome_usuario_reserva": r[19],
+                "data_entrada": data_upload_veiculo(id_veiculo),
                 "precisa_concluir_venda": r[14] == 3 and r[18] is not None,
                 "status_venda": (
                     "VENDIDO"
