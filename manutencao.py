@@ -1,21 +1,29 @@
+# Importa recursos do módulo flask.
 from flask import jsonify, request  # Importa recursos para responder JSON e ler dados da requisicao.
+# Importa recursos do módulo main.
 from main import app, con  # Importa a aplicacao Flask e a conexao com o banco.
+# Importa módulos usados por este arquivo.
 import jwt  # Importa a biblioteca usada para tratar erros de token JWT.
+# Importa módulos usados por este arquivo.
 import datetime  # Importa recursos para trabalhar com datas e horarios.
+# Importa recursos do módulo function.
 from function import recalcular_total_manutencao  # Importa a funcao que recalcula o total da manutencao.
 
 
 @app.route('/cadastrar_manutencao', methods=['POST'])
+# Declara a função cadastrar_manutencao usada neste fluxo.
 def cadastrar_manutencao():
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Lê os dados enviados em JSON.
         dados = request.get_json()
 
         # Verifica se o corpo da requisicao veio vazio.
         if not dados:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Envie os dados no formato JSON.'}), 400
 
         # Recupera o id do veiculo.
@@ -29,10 +37,12 @@ def cadastrar_manutencao():
 
         # Verifica se todos os campos obrigatorios vieram.
         if not id_veiculo or not data_manutencao or not servicos:
+            # Retorna o resultado desta operação.
             return jsonify({
                 'erro': 'Todos os campos (id_veiculo, data_manutencao, servicos) são obrigatórios.'
             }), 400
 
+        # Inicia uma operação protegida para permitir o tratamento de erros.
         try:
             # Converte a data recebida para datetime.
             data_manutencao = datetime.datetime.strptime(data_manutencao, '%d/%m/%Y %H:%M')
@@ -45,12 +55,14 @@ def cadastrar_manutencao():
 
             # Verifica se a data informada esta no passado.
             if data_manutencao < agora:
+                # Retorna o resultado desta operação.
                 return jsonify({
                     'erro': 'Por acaso a humanidade criou uma máquina do tempo para voltar para o passado?'
                 }), 400
 
             # Verifica se a data ultrapassa o limite permitido.
             if data_manutencao > limite_data:
+                # Retorna o resultado desta operação.
                 return jsonify({
                     'erro': 'Data muito distante, o agendamento permitido é no máximo um ano.'
                 })
@@ -71,6 +83,7 @@ def cadastrar_manutencao():
 
         # Verifica se o veiculo nao existe.
         if not cur.fetchone():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Veículo não encontrado.'}), 404
 
         # Cadastra a manutencao com valor inicial zerado.
@@ -175,16 +188,19 @@ def cadastrar_manutencao():
 
 
 @app.route('/editar_manutencao/<int:id_manutencao>', methods=['PUT'])
+# Declara a função editar_manutencao usada neste fluxo.
 def editar_manutencao(id_manutencao):
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Lê os dados enviados em JSON.
         dados = request.get_json()
 
         # Verifica se o corpo JSON veio vazio.
         if not dados:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Envie os dados em json'}), 400
 
         # Recupera o id do veiculo.
@@ -198,6 +214,7 @@ def editar_manutencao(id_manutencao):
 
         # Verifica se todos os campos obrigatorios vieram.
         if not id_veiculo or not data_manutencao or not servico:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Por favor todos os campos sao obrigatorios'}), 400
 
         # Busca a data atual da manutencao.
@@ -215,6 +232,7 @@ def editar_manutencao(id_manutencao):
 
         # Verifica se a manutencao nao existe.
         if not manutencao:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Manutenção não encontrada'}), 404
 
         # Guarda a data antiga da manutencao.
@@ -225,8 +243,10 @@ def editar_manutencao(id_manutencao):
 
         # Bloqueia edicao de manutencao passada.
         if data_antiga < agora:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Não é possível editar uma manutenção que já ocorreu.'}), 403
 
+        # Inicia uma operação protegida para permitir o tratamento de erros.
         try:
             # Converte a nova data para datetime.
             data_nova = datetime.datetime.strptime(dados['data_nova'], '%d/%m/%Y  %H:%M')
@@ -236,10 +256,12 @@ def editar_manutencao(id_manutencao):
 
             # Verifica se a nova data esta no passado.
             if data_nova < agora:
+                # Retorna o resultado desta operação.
                 return jsonify({'erro': 'A nova data não pode ser no passado.'}), 400
 
             # Verifica se a nova data passa de 1 ano.
             if data_nova > limite_futuro:
+                # Retorna o resultado desta operação.
                 return jsonify({'erro': 'A nova data não pode ser mais de um ano no futuro.'}), 400
 
         except ValueError:
@@ -293,6 +315,7 @@ def editar_manutencao(id_manutencao):
 
             # Verifica se o servico nao existe.
             if not servicos:
+                # Retorna o resultado desta operação.
                 return jsonify({'erro': f'Serviço de ID {id_servico} não existe.'}), 404
 
             # Converte o valor cobrado para float.
@@ -356,10 +379,12 @@ def editar_manutencao(id_manutencao):
 
 
 @app.route('/deletar_manutencao/<int:id_manutencao>', methods=['DELETE'])
+# Declara a função deletar_manutencao usada neste fluxo.
 def deletar_manutencao(id_manutencao):
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Busca a data da manutencao.
         cur.execute(  # Consulta a data da manutencao antes de excluir.
@@ -376,6 +401,7 @@ def deletar_manutencao(id_manutencao):
 
         # Verifica se a manutencao nao existe.
         if not manutecao:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Não foi possível encontrar a manutenção'}), 404
 
         # Guarda a data agendada.
@@ -383,6 +409,7 @@ def deletar_manutencao(id_manutencao):
 
         # Bloqueia exclusao de historico ja ocorrido.
         if data_agendada < datetime.datetime.now():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Não é possível excluir o histórico de uma manutenção que já aconteceu.'}), 403
 
         # Remove primeiro os itens, pois eles dependem da manutencao.
@@ -429,16 +456,19 @@ def deletar_manutencao(id_manutencao):
 
 
 @app.route('/buscar_manutencao', methods=['POST'])
+# Declara a função buscar_manutencao usada neste fluxo.
 def buscar_manutencao():
     # Abre um cursor para consultar o banco.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Lê os dados enviados em JSON.
         dados = request.get_json()
 
         # Verifica se o corpo JSON veio vazio.
         if not dados:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Envie os dados no formato JSON.'}), 400
 
         # Recupera o id da manutencao usado como filtro.
@@ -449,6 +479,7 @@ def buscar_manutencao():
 
         # Busca manutencao pelo id.
         if id_manutencao:
+            # Executa este comando no banco de dados.
             cur.execute(  # Busca a manutencao pelo id informado.
                 """
                 SELECT M.ID_MANUTENCAO, -- Seleciona o id da manutencao.
@@ -467,6 +498,7 @@ def buscar_manutencao():
 
         # Busca manutencoes pelo veiculo.
         elif id_veiculo:
+            # Executa este comando no banco de dados.
             cur.execute(  # Busca manutencoes vinculadas ao veiculo.
                 """
                 SELECT M.ID_MANUTENCAO, -- Seleciona o id da manutencao.
@@ -486,6 +518,7 @@ def buscar_manutencao():
 
         # Retorna erro se nenhum filtro obrigatorio foi informado.
         else:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Informe id_manutencao ou id_veiculo para realizar a busca.'}), 400
 
         # Recupera todas as manutencoes encontradas.
@@ -493,6 +526,7 @@ def buscar_manutencao():
 
         # Verifica se nenhuma manutencao foi encontrada.
         if not manutencoes:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Nenhuma manutenção encontrada.'}), 404
 
         # Cria a lista final da resposta.
@@ -524,6 +558,7 @@ def buscar_manutencao():
 
             # Percorre cada item da manutencao.
             for item in itens:
+                # Executa append nesta etapa do fluxo.
                 lista_servicos.append({
                     'servico': item[0],
                     'quantidade': item[1],
@@ -569,10 +604,12 @@ def buscar_manutencao():
 
 
 @app.route('/listar_manutencao', methods=['GET'])
+# Declara a função listar_manutencao usada neste fluxo.
 def listar_manutencao():
     # Abre um cursor para consultar o banco.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Busca todas as manutencoes.
         cur.execute(  # Busca todas as manutencoes cadastradas.
@@ -595,6 +632,7 @@ def listar_manutencao():
 
         # Verifica se nao ha manutencoes cadastradas.
         if not manutencoes:
+            # Retorna o resultado desta operação.
             return jsonify({'mensagem': 'Nenhuma manutenção encontrada.'}), 404
 
         # Cria a lista final da resposta.
@@ -626,10 +664,14 @@ def listar_manutencao():
 
             # Percorre cada item encontrado.
             for item in itens:
+                # Define quantidade para uso nas próximas etapas.
                 quantidade = item[1]
+                # Define valor_cobrado para uso nas próximas etapas.
                 valor_cobrado = float(item[2])
+                # Define subtotal para uso nas próximas etapas.
                 subtotal = quantidade * valor_cobrado
 
+                # Executa append nesta etapa do fluxo.
                 lista_servicos.append({
                     'servico': item[0],
                     'quantidade': quantidade,
@@ -672,10 +714,12 @@ def listar_manutencao():
 
 
 @app.route('/adicionar_item_manutencao', methods=['POST'])
+# Declara a função adicionar_item_manutencao usada neste fluxo.
 def adicionar_item_manutencao():
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Lê os dados enviados em JSON.
         dados = request.get_json()
@@ -691,6 +735,7 @@ def adicionar_item_manutencao():
 
         # Verifica se campos obrigatorios foram enviados.
         if not id_manutencao or not id_servico:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Campo obrigatório'}), 400
 
         # Converte a quantidade para inteiro.
@@ -711,10 +756,12 @@ def adicionar_item_manutencao():
 
         # Verifica se a manutencao nao existe.
         if not manutencao:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Manutenção não encontrada'}), 400
 
         # Bloqueia alteracao de manutencao passada.
         if manutencao[0] < datetime.datetime.now():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Não é possível alterar uma manutenção no passado'}), 400
 
         # Busca o valor do servico.
@@ -732,6 +779,7 @@ def adicionar_item_manutencao():
 
         # Verifica se o servico nao existe.
         if not servico:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': f'Serviço de id{id_servico} não exite'}), 400
 
         # Converte o valor do servico para float.
@@ -781,10 +829,12 @@ def adicionar_item_manutencao():
 
 
 @app.route('/editar_item_manutencao/<int:id_item>', methods=['PUT'])
+# Declara a função editar_item_manutencao usada neste fluxo.
 def editar_item_manutencao(id_item):
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Lê os dados enviados em JSON.
         dados = request.get_json()
@@ -794,6 +844,7 @@ def editar_item_manutencao(id_item):
 
         # Verifica se a quantidade foi enviada.
         if not quantidade:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Quantidade é obrigatória'}), 400
 
         # Converte a quantidade para inteiro.
@@ -814,6 +865,7 @@ def editar_item_manutencao(id_item):
 
         # Verifica se o item nao existe.
         if not item:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Item não encontrado'}), 404
 
         # Guarda o id da manutencao do item.
@@ -834,6 +886,7 @@ def editar_item_manutencao(id_item):
 
         # Bloqueia edicao de item passado.
         if manutencao[0] < datetime.datetime.now():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Não pode editar item de manutenção passada'}), 403
 
         # Atualiza a quantidade do item.
@@ -876,10 +929,12 @@ def editar_item_manutencao(id_item):
 
 
 @app.route('/excluir_item_manutencao/<int:id_item>', methods=['DELETE'])
+# Declara a função excluir_item_manutencao usada neste fluxo.
 def excluir_item_manutencao(id_item):
     # Abre um cursor para executar comandos SQL.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Busca a manutencao do item.
         cur.execute(  # Consulta a manutencao vinculada ao item.
@@ -896,6 +951,7 @@ def excluir_item_manutencao(id_item):
 
         # Verifica se o item nao existe.
         if not item:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Item não encontrado'}), 404
 
         # Guarda o id da manutencao do item.
@@ -916,10 +972,12 @@ def excluir_item_manutencao(id_item):
 
         # Verifica se a manutencao nao existe.
         if not data:
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Manutenção não encontrada'}), 404
 
         # Bloqueia exclusao de item passado.
         if data[0] < datetime.datetime.now():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Não pode excluir item de manutenção passada'}), 403
 
         # Exclui o item pelo id.
@@ -962,10 +1020,12 @@ def excluir_item_manutencao(id_item):
 
 
 @app.route('/listar_item_manutencao/<int:id_manutencao>', methods=['GET'])
+# Declara a função listar_item_manutencao usada neste fluxo.
 def listar_item_manutencao(id_manutencao):
     # Abre um cursor para consultar o banco.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Verifica se a manutencao existe.
         cur.execute(  # Verifica se a manutencao existe.
@@ -979,6 +1039,7 @@ def listar_item_manutencao(id_manutencao):
 
         # Retorna erro se a manutencao nao foi encontrada.
         if not cur.fetchone():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Manutenção não encontrada'}), 404
 
         # Busca os itens da manutencao.
@@ -1003,6 +1064,7 @@ def listar_item_manutencao(id_manutencao):
 
         # Verifica se nao ha itens para a manutencao.
         if not itens:
+            # Retorna o resultado desta operação.
             return jsonify({'mensagem': 'Nenhum item foi encontrado'}), 404
 
         # Cria a lista final de itens.
@@ -1010,10 +1072,14 @@ def listar_item_manutencao(id_manutencao):
 
         # Percorre cada item encontrado.
         for item in itens:
+            # Define quantidade para uso nas próximas etapas.
             quantidade = int(item[4])
+            # Define valor_unitario para uso nas próximas etapas.
             valor_unitario = float(item[5])
+            # Define total para uso nas próximas etapas.
             total = quantidade * valor_unitario
 
+            # Executa append nesta etapa do fluxo.
             lista_itens.append({
                 'id_item': item[0],
                 'id_manutencao': item[1],
@@ -1045,10 +1111,12 @@ def listar_item_manutencao(id_manutencao):
 
 
 @app.route('/historico_servico/<int:id_servico>', methods=['GET'])
+# Declara a função listar_historico_servico usada neste fluxo.
 def listar_historico_servico(id_servico):
     # Abre um cursor para consultar o banco.
     cur = con.cursor()
 
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Busca o historico do servico.
         cur.execute(  # Busca o historico de alteracoes do servico.
@@ -1069,6 +1137,7 @@ def listar_historico_servico(id_servico):
 
         # Verifica se nao ha historico para o servico.
         if not historico:
+            # Retorna o resultado desta operação.
             return jsonify({'mensagem': 'Nenhum histórico encontrado para este serviço.'}), 404
 
         # Cria a lista de historico formatado.
@@ -1076,6 +1145,7 @@ def listar_historico_servico(id_servico):
 
         # Percorre cada registro do historico.
         for registro in historico:
+            # Executa append nesta etapa do fluxo.
             lista_h.append({
                 'servico': registro[0],
                 'valor_antigo': float(registro[1]),

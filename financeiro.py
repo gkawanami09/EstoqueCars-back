@@ -23,6 +23,7 @@ from function import (
 def cadastro_financeiro():
     # Abre um cursor para executar comandos no banco de dados.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Busca os dados enviados na requisição.
         dados = dados_requisicao()
@@ -81,7 +82,7 @@ def cadastro_financeiro():
                 VALOR
             )
             VALUES (?, ?, ?, ?)
-            RETURNING ID_FINANCEIRO
+            RETURNING ID_FINANCEIRO --na hora de dar o insert na tabela vai pegar direto o id do financeiro
             """,
             (descricao, tipo, data_financeiro, valor)
         )
@@ -134,6 +135,7 @@ def cadastro_financeiro():
 def listar_financeiro():
     # Abre um cursor para executar consultas no banco.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Consulta todas as transações financeiras.
         cur.execute(
@@ -170,6 +172,7 @@ def listar_financeiro():
 def listar_receitas():
     # Abre um cursor para executar consultas no banco.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Consulta transações financeiras com TIPO igual a 0, que representa receita.
         cur.execute(
@@ -204,6 +207,7 @@ def listar_receitas():
 def listar_despesas():
     # Abre um cursor para executar consultas no banco.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Consulta transações financeiras com TIPO igual a 1, que representa despesa.
         cur.execute(
@@ -238,6 +242,7 @@ def listar_despesas():
 def resumo_financeiro():
     # Abre um cursor para executar consultas no banco.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Consulta apenas tipo e valor, pois o resumo precisa somar receitas e despesas.
         cur.execute(
@@ -258,10 +263,12 @@ def resumo_financeiro():
         for tipo, valor in cur.fetchall():
             # Se o tipo for 0, soma o valor como receita.
             if int(tipo or 0) == 0:
+                # Atualiza o valor de receita.
                 receita += float(valor or 0)
 
             # Qualquer outro tipo é somado como despesa.
             else:
+                # Atualiza o valor de despesas.
                 despesas += float(valor or 0)
 
         # Retorna o total de receitas, despesas, saldo e lucro líquido.
@@ -288,6 +295,7 @@ def resumo_financeiro():
 def editar_financeiro(id_financeiro):
     # Abre um cursor para executar comandos no banco de dados.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Busca os dados enviados na requisição.
         dados = dados_requisicao()
@@ -341,6 +349,7 @@ def editar_financeiro(id_financeiro):
 
         # Se não encontrar o registro, retorna erro 404.
         if not cur.fetchone():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Transação financeira não encontrada.'}), 404
 
         # Atualiza os dados da transação financeira existente.
@@ -383,12 +392,14 @@ def editar_financeiro(id_financeiro):
 def excluir_financeiro(id_financeiro):
     # Abre um cursor para executar comandos no banco de dados.
     cur = con.cursor()
+    # Inicia uma operação protegida para permitir o tratamento de erros.
     try:
         # Verifica se existe uma transação financeira com o ID informado.
         cur.execute("SELECT ID_FINANCEIRO FROM FINANCEIRO WHERE ID_FINANCEIRO = ?", (id_financeiro,))
 
         # Se não encontrar o registro, retorna erro 404.
         if not cur.fetchone():
+            # Retorna o resultado desta operação.
             return jsonify({'erro': 'Transação financeira não encontrada.'}), 404
 
         # Exclui a transação financeira encontrada.
