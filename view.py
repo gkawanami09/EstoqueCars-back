@@ -151,7 +151,7 @@ def criar_usuario():
         # Verifica esta condição antes de continuar o fluxo.
         if foto_perfil:
             # Define nome_imagem para uso nas próximas etapas.
-            nome_imagem = f'foto_perfil{id_usuario}.png'
+            nome_imagem = f'{id_usuario}.jpg'
             # Define caminho_foto para uso nas próximas etapas.
             caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
             # Executa save nesta etapa do fluxo.
@@ -710,7 +710,8 @@ def listar_usuario():
                 'telefone': u[4],
                 'cpf': u[3],
                 'tipo_usuario': u[5],
-                'situacao': u[6]
+                'situacao': u[6],
+                'foto_perfil': f'/uploads/{u[0]}.jpg'
             })
         # Retorna o resultado desta operação.
         return jsonify(lista_usuarios), 200
@@ -842,14 +843,18 @@ def excluir_usuario(id_usuario):
         # Confirma no banco todas as alterações realizadas.
         con.commit()
 
-        # Define nome_imagem para uso nas próximas etapas.
-        nome_imagem = f'{id_usuario}.jpg'
-        # Define caminho_foto para uso nas próximas etapas.
-        caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
-        # Verifica esta condição antes de continuar o fluxo.
-        if os.path.exists(caminho_foto):
-            # Executa remove nesta etapa do fluxo.
-            os.remove(caminho_foto)
+        # Remove tanto o nome atual quanto nomes antigos usados para fotos de perfil.
+        nomes_imagem = [
+            f'{id_usuario}.jpg',
+            f'{id_usuario}.png',
+            f'foto_perfil{id_usuario}.png',
+            f'foto_perfil{id_usuario}.jpg',
+            f'foto_perfil_{id_usuario}.jpg',
+        ]
+        for nome_imagem in nomes_imagem:
+            caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_imagem)
+            if os.path.exists(caminho_foto):
+                os.remove(caminho_foto)
 
         # Retorna o resultado desta operação.
         return jsonify({'mensagem': 'Usuário removido com sucesso'}), 200

@@ -1052,6 +1052,21 @@ def listar_carro():
 @app.route('/uploads/<path:nome_arquivo>')
 # Declara a função uploads usada neste fluxo.
 def uploads(nome_arquivo):
+    # Mantem fotos antigas visiveis nas telas que usam o padrao "<id>.jpg".
+    caminho_solicitado = os.path.join(app.config['UPLOAD_FOLDER'], nome_arquivo)
+    if not os.path.isfile(caminho_solicitado):
+        nome_base, extensao = os.path.splitext(nome_arquivo)
+        if nome_base.isdigit() and extensao.lower() == '.jpg':
+            nomes_antigos = [
+                f'foto_perfil{nome_base}.png',
+                f'foto_perfil{nome_base}.jpg',
+                f'foto_perfil_{nome_base}.jpg',
+                f'{nome_base}.png',
+            ]
+            for nome_antigo in nomes_antigos:
+                if os.path.isfile(os.path.join(app.config['UPLOAD_FOLDER'], nome_antigo)):
+                    return send_from_directory(app.config['UPLOAD_FOLDER'], nome_antigo)
+
     # Retorna o arquivo solicitado da pasta de uploads.
     return send_from_directory(app.config['UPLOAD_FOLDER'], nome_arquivo)
 
