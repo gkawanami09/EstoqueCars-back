@@ -193,7 +193,7 @@ def enviando_email(destinatario, assunto, mensagem_html):
     # Define o e-mail remetente.
     user = 'estoquecars@gmail.com'
     # Define a senha de aplicativo usada para autenticar no Gmail.
-    senha = 'sozzflywdrfxxntv'
+    senha = ''
 
     # Cria um envelope de e-mail que pode ter várias partes.
     msg = MIMEMultipart()
